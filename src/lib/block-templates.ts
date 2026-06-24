@@ -1,4 +1,4 @@
-export type TemplateKind = "orden" | "venta" | "etiqueta" | "ticket" | "custom";
+export type TemplateKind = "orden" | "cotizacion" | "venta" | "etiqueta" | "ticket" | "custom";
 
 export type BlockType =
   | "header"
@@ -243,12 +243,12 @@ export const BLOCK_META: Record<BlockType, { label: string; description: string;
   vehicle: {
     label: "Vehículo",
     description: "Marca, modelo, placa, VIN y más",
-    availableFor: ["orden"],
+    availableFor: ["orden", "cotizacion"],
   },
   diagnosis: {
-    label: "Diagnóstico",
+    label: "Diagnóstico / Descripción",
     description: "Síntomas reportados e inspección",
-    availableFor: ["orden"],
+    availableFor: ["orden", "cotizacion"],
   },
   "items-table": {
     label: "Tabla de ítems",
@@ -288,7 +288,7 @@ export const BLOCK_META: Record<BlockType, { label: string; description: string;
   "vehicle-condition": {
     label: "Estado del vehículo",
     description: "Condición al ingreso o egreso",
-    availableFor: ["orden"],
+    availableFor: ["orden", "cotizacion"],
   },
   separator: {
     label: "Separador",
@@ -963,9 +963,30 @@ export function defaultTicketBlocks(): AnyBlock[] {
   ];
 }
 
+export function defaultCotizacionBlocks(): AnyBlock[] {
+  return [
+    makeBlock("header"),
+    makeBlock("separator"),
+    makeBlock("doc-meta", { title: "Cotización / Proforma", showNumber: true, showStatus: false, showCreatedAt: true, showUpdatedAt: false }),
+    makeBlock("separator"),
+    makeBlock("section", { title: "Cliente y vehículo", level: "h2" }),
+    makeBlock("client", { showName: true, showDocumentId: true, showPhone: true, showEmail: true, showCompany: false }),
+    makeBlock("vehicle", { showMake: true, showModel: true, showYear: true, showPlate: true, showColor: false, showVin: false, showMileage: false }),
+    makeBlock("section", { title: "Descripción del trabajo", level: "h2" }),
+    makeBlock("diagnosis", { showSymptoms: true, showInspection: true, showNextMileage: false }),
+    makeBlock("section", { title: "Ítems", level: "h2" }),
+    makeBlock("items-table", { title: "Ítems", showType: true, display: "mixed" }),
+    makeBlock("section", { title: "Totales", level: "h2" }),
+    makeBlock("totals", { title: "Totales", showSubtotal: true, showIva: true, showTotal: true, showPaid: false, showBalance: false, leftContent: "text", leftText: "Este documento es una cotización referencial.\nLos precios pueden variar según disponibilidad.", signatureLabel: "" }),
+    makeBlock("separator"),
+    makeBlock("text", { content: "Cotización válida por 15 días a partir de la fecha de emisión.", align: "center", size: "sm" }),
+  ];
+}
+
 export function defaultBlockTemplates(): BlockTemplate[] {
   return [
     { id: "default-order", name: "Orden por defecto", kind: "orden", blocks: defaultOrderBlocks() },
+    { id: "default-cotizacion", name: "Cotización / Proforma", kind: "cotizacion", blocks: defaultCotizacionBlocks() },
     { id: "default-sale", name: "Venta por defecto", kind: "venta", blocks: defaultSaleBlocks() },
     { id: "default-label", name: "Etiqueta de producto", kind: "etiqueta", blocks: defaultLabelBlocks() },
     { id: "default-ticket", name: "Ticket térmico", kind: "ticket", blocks: defaultTicketBlocks() },

@@ -45,8 +45,9 @@ function PrintingOverlay({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-const KIND_TO_TEMPLATE: Record<string, "orden" | "venta" | "etiqueta" | "ticket" | "custom"> = {
+const KIND_TO_TEMPLATE: Record<string, "orden" | "cotizacion" | "venta" | "etiqueta" | "ticket" | "custom"> = {
   orden: "orden",
+  cotizacion: "cotizacion",
   venta: "venta",
   compra: "venta",
   etiqueta: "etiqueta",
@@ -60,7 +61,7 @@ export function PrintTemplateButton({
   label = "Imprimir",
   variant = "outline",
 }: {
-  kind: "orden" | "venta" | "compra" | "etiqueta" | "ticket";
+  kind: "orden" | "cotizacion" | "venta" | "compra" | "etiqueta" | "ticket";
   id: string;
   orgId: string;
   label?: string;

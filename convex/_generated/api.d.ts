@@ -19,6 +19,7 @@ import type * as finances from "../finances.js";
 import type * as http from "../http.js";
 import type * as inventory from "../inventory.js";
 import type * as notifications from "../notifications.js";
+import type * as onboarding from "../onboarding.js";
 import type * as organizations from "../organizations.js";
 import type * as payment_networks from "../payment_networks.js";
 import type * as payroll from "../payroll.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   inventory: typeof inventory;
   notifications: typeof notifications;
+  onboarding: typeof onboarding;
   organizations: typeof organizations;
   payment_networks: typeof payment_networks;
   payroll: typeof payroll;

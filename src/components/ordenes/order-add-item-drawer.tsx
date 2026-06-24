@@ -25,6 +25,7 @@ type OrderItem = {
   quantity: number;
   unitPrice: number;
   total: number;
+  inventoryId?: Id<"inventory">;
 };
 
 type InventoryItem = {
@@ -53,18 +54,32 @@ interface OrderAddItemDrawerProps {
   items: OrderItem[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  orderStatus?: string;
   // If editing an existing item
   itemToEdit?: OrderItem | null;
   onEditComplete?: () => void;
 }
 
-export function OrderAddItemDrawer({ 
-  entityId, 
+function calculatePriceFromPlan(cost: number, percentage: number, rounding: ProfitPlan["rounding"]) {
+  const raw = cost * (1 + percentage / 100);
+  const value = rounding === "up"
+    ? Math.ceil(raw)
+    : rounding === "down"
+      ? Math.floor(raw)
+      : rounding === "nearest"
+        ? Math.round(raw)
+        : raw;
+  return Number(value.toFixed(2));
+}
+
+export function OrderAddItemDrawer({
+  entityId,
   entityType = "order",
-  orgId, 
-  items, 
-  open, 
+  orgId,
+  items,
+  open,
   onOpenChange,
+  orderStatus,
   itemToEdit,
   onEditComplete
 }: OrderAddItemDrawerProps) {
@@ -95,9 +110,13 @@ export function OrderAddItemDrawer({
     orgId ? { orgId, status: "Activo" } : "skip",
   ) as { _id: Id<"services">; name: string; description?: string; billingType: "unit" | "hour"; salePrice: number; costPrice: number; status: "Activo" | "Inactivo" }[] | undefined;
 
-  // Initialize form when opened or when itemToEdit changes
-  useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevItemToEdit, setPrevItemToEdit] = useState(itemToEdit);
+
+  if (open !== prevOpen || itemToEdit !== prevItemToEdit) {
+    setPrevOpen(open);
+    setPrevItemToEdit(itemToEdit);
+    
     if (open) {
       if (itemToEdit) {
         setInventorySearch(itemToEdit.type === "part" ? itemToEdit.description : "");
@@ -120,8 +139,7 @@ export function OrderAddItemDrawer({
         setNewItem({ type: "part", description: "", quantity: 1, unitPrice: 0 });
       }
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [open, itemToEdit]);
+  }
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -153,15 +171,33 @@ export function OrderAddItemDrawer({
 
   const plans = (settings?.profitPlans || []) as ProfitPlan[];
   const taxRate = settings?.taxRate ?? 15;
+  const isStockRestricted = entityType === "order" && orderStatus === "Pendiente" && !settings?.allowNegativeStock;
+
+  const getAvailable = (inventoryId: Id<"inventory">, inventoryQty: number) => {
+    if (!isStockRestricted) return Infinity;
+    const inOrder = items
+      .filter((i) => i.inventoryId === inventoryId && (!itemToEdit || i.id !== itemToEdit.id))
+      .reduce((sum, i) => sum + i.quantity, 0);
+    return inventoryQty - inOrder;
+  };
 
   const handleAddInventoryItem = async (item: InventoryItem) => {
+    const available = getAvailable(item._id, item.quantity);
+    if (isStockRestricted && available <= 0) {
+      toastManager.add({ type: "error", title: "Sin stock", description: `"${item.name}" no tiene stock disponible.` });
+      return;
+    }
     const existingItem = items.find(
       (orderItem) =>
         orderItem.type === "part" &&
-        orderItem.description === (item.description?.trim() || item.name) &&
-        orderItem.unitPrice === item.salePrice &&
+        orderItem.inventoryId === item._id &&
         (!itemToEdit || orderItem.id !== itemToEdit.id)
     );
+
+    if (isStockRestricted && existingItem && existingItem.quantity >= available + existingItem.quantity) {
+      toastManager.add({ type: "error", title: "Stock insuficiente", description: `Solo hay ${item.quantity} unidad(es) disponibles de "${item.name}".` });
+      return;
+    }
 
     const orderItem: OrderItem = existingItem
       ? {
@@ -176,6 +212,7 @@ export function OrderAddItemDrawer({
           quantity: itemToEdit ? itemToEdit.quantity : 1,
           unitPrice: item.salePrice,
           total: (itemToEdit ? itemToEdit.quantity : 1) * item.salePrice,
+          inventoryId: item._id,
         };
 
     try {
@@ -307,18 +344,6 @@ export function OrderAddItemDrawer({
     }
   };
 
-  function calculatePriceFromPlan(cost: number, percentage: number, rounding: ProfitPlan["rounding"]) {
-    const raw = cost * (1 + percentage / 100);
-    const value = rounding === "up"
-      ? Math.ceil(raw)
-      : rounding === "down"
-        ? Math.floor(raw)
-        : rounding === "nearest"
-          ? Math.round(raw)
-          : raw;
-    return Number(value.toFixed(2));
-  }
-
   const handleSelectInventoryItem = (item: InventoryItem) => {
     const plans = (settings?.profitPlans || []) as ProfitPlan[];
     const defaultPlanId = settings?.defaultProfitPlanId || plans[0]?.id || "";
@@ -346,6 +371,16 @@ export function OrderAddItemDrawer({
 
   const handleAddSelectedInventoryItem = async () => {
     if (!selectedInventoryItem) return;
+    const available = getAvailable(selectedInventoryItem._id, selectedInventoryItem.quantity);
+    const requestedQty = Number(newItem.quantity) || 1;
+    if (isStockRestricted && requestedQty > available) {
+      toastManager.add({
+        type: "error",
+        title: "Stock insuficiente",
+        description: `Solo hay ${available} unidad(es) disponibles de "${selectedInventoryItem.name}".`,
+      });
+      return;
+    }
     const price = Number(newItem.unitPrice) || selectedInventoryItem.salePrice;
     const quantity = Number(newItem.quantity) || 1;
     const orderItem: OrderItem = {
@@ -355,6 +390,7 @@ export function OrderAddItemDrawer({
       quantity,
       unitPrice: price,
       total: quantity * price,
+      inventoryId: selectedInventoryItem._id,
     };
 
     const updatedItems = itemToEdit
@@ -452,40 +488,50 @@ export function OrderAddItemDrawer({
                         No hay productos que coincidan con la búsqueda.
                       </p>
                     ) : (
-                      visibleInventory.map((item) => (
-                      <div
-                        key={item._id}
-                        onClick={() => handleAddInventoryItem(item)}
-                        role="button"
-                        tabIndex={0}
-                        className={`flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 hover:bg-muted/60 ${
-                          selectedInventoryItem?._id === item._id ? "bg-muted/50" : ""
-                        }`}
-                      >
-                          <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">{item.name}</div>
-                          <div className="truncate text-xs text-muted-foreground">
-                              {(item.sku || item.code)} · Stock {item.quantity}
-                          </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-sm font-semibold">
-                              ${item.salePrice.toFixed(2)}
-                            </span>
-                            <button
-                              type="button"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground"
-                              aria-label={`Editar planes de ${item.name}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditInventoryItem(item);
-                              }}
-                            >
-                              <PencilEdit01Icon className="size-3.5" />
-                            </button>
-                          </div>
-                      </div>
-                      ))
+                      visibleInventory.map((item) => {
+                        const available = getAvailable(item._id, item.quantity);
+                        const noStock = isStockRestricted && available <= 0;
+                        return (
+                        <div
+                          key={item._id}
+                          onClick={() => !noStock && handleAddInventoryItem(item)}
+                          role="button"
+                          tabIndex={0}
+                          aria-disabled={noStock}
+                          className={`flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left last:border-b-0 ${
+                            noStock
+                              ? "cursor-not-allowed opacity-50"
+                              : `hover:bg-muted/60 ${selectedInventoryItem?._id === item._id ? "bg-muted/50" : ""}`
+                          }`}
+                        >
+                            <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{item.name}</div>
+                            <div className="truncate text-xs text-muted-foreground">
+                                {(item.sku || item.code)} · {isStockRestricted ? `Disponible ${available}` : `Stock ${item.quantity}`}
+                                {noStock && <span className="ml-1 text-destructive font-medium">· Sin stock</span>}
+                            </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-sm font-semibold">
+                                ${item.salePrice.toFixed(2)}
+                              </span>
+                              {!noStock && (
+                                <button
+                                  type="button"
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background text-muted-foreground"
+                                  aria-label={`Editar planes de ${item.name}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditInventoryItem(item);
+                                  }}
+                                >
+                                  <PencilEdit01Icon className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                        </div>
+                        );
+                      })
                     )}
                   </div>
                   {showProfitPlans && selectedInventoryItem ? (
@@ -496,11 +542,19 @@ export function OrderAddItemDrawer({
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="listQuantity">Cantidad</Label>
+                          <Label htmlFor="listQuantity">
+                            Cantidad
+                            {isStockRestricted && selectedInventoryItem && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                (máx {getAvailable(selectedInventoryItem._id, selectedInventoryItem.quantity)})
+                              </span>
+                            )}
+                          </Label>
                           <Input
                             id="listQuantity"
                             type="number"
                             min="1"
+                            max={isStockRestricted && selectedInventoryItem ? getAvailable(selectedInventoryItem._id, selectedInventoryItem.quantity) : undefined}
                             value={newItem.quantity}
                             onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value === "" ? "" : parseFloat(e.target.value) })}
                           />

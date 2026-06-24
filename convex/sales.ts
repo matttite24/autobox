@@ -1,7 +1,56 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { v, ConvexError } from "convex/values";
+import { api, internal } from "./_generated/api";
 import { requireOrgAccess, requireDocAccess } from "./access";
+
+type StockItem = { inventoryId?: string; quantity: number };
+
+async function applyStockDelta(
+  ctx: { runMutation: Function },
+  prevItems: StockItem[],
+  nextItems: StockItem[]
+) {
+  const delta = new Map<string, number>();
+  for (const item of prevItems) {
+    if (item.inventoryId) delta.set(item.inventoryId, (delta.get(item.inventoryId) ?? 0) + item.quantity);
+  }
+  for (const item of nextItems) {
+    if (item.inventoryId) delta.set(item.inventoryId, (delta.get(item.inventoryId) ?? 0) - item.quantity);
+  }
+  for (const [inventoryId, d] of delta.entries()) {
+    if (d !== 0) {
+      await ctx.runMutation(internal.inventory.adjustStock, { inventoryId: inventoryId as any, delta: d });
+    }
+  }
+}
+
+async function checkStock(
+  ctx: { db: any },
+  orgId: string,
+  prevItems: StockItem[],
+  nextItems: StockItem[]
+) {
+  const settings = await ctx.db
+    .query("organization_settings")
+    .withIndex("by_org", (q: any) => q.eq("orgId", orgId))
+    .first();
+  if (settings?.allowNegativeStock) return;
+
+  const netRemove = new Map<string, number>();
+  for (const item of nextItems) {
+    if (item.inventoryId) netRemove.set(item.inventoryId, (netRemove.get(item.inventoryId) ?? 0) + item.quantity);
+  }
+  for (const item of prevItems) {
+    if (item.inventoryId) netRemove.set(item.inventoryId, (netRemove.get(item.inventoryId) ?? 0) - item.quantity);
+  }
+  for (const [inventoryId, need] of netRemove.entries()) {
+    if (need <= 0) continue;
+    const inv = await ctx.db.get(inventoryId);
+    if (inv && inv.quantity < need) {
+      throw new ConvexError(`Stock insuficiente para "${inv.name}": disponible ${inv.quantity}, requerido ${need}.`);
+    }
+  }
+}
 
 export const get = query({
   args: { orgId: v.id("organizations") },
@@ -79,11 +128,18 @@ export const updateStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireDocAccess(ctx, "sales", args.id);
-    return await ctx.db.patch(args.id, {
-      status: args.status,
-      updatedAt: Date.now(),
-    });
+    const { doc: sale } = await requireDocAccess(ctx, "sales", args.id);
+    if (!sale) throw new Error("Venta no encontrada");
+    const wasCancelled = sale.status === "Cancelada";
+    const isCancelling = args.status === "Cancelada";
+    if (isCancelling && !wasCancelled) {
+      await applyStockDelta(ctx, sale.items ?? [], []);
+    } else if (!isCancelling && wasCancelled) {
+      const items = (sale.items ?? []) as StockItem[];
+      await checkStock(ctx, sale.orgId, [], items);
+      await applyStockDelta(ctx, [], items);
+    }
+    return await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() });
   },
 });
 
@@ -126,15 +182,18 @@ export const updateItems = mutation({
         quantity: v.number(),
         unitPrice: v.number(),
         total: v.number(),
+        inventoryId: v.optional(v.id("inventory")),
       })
     ),
   },
   handler: async (ctx, args) => {
-    await requireDocAccess(ctx, "sales", args.id);
-    return await ctx.db.patch(args.id, {
-      items: args.items,
-      updatedAt: Date.now(),
-    });
+    const { doc: sale } = await requireDocAccess(ctx, "sales", args.id);
+    if (!sale) throw new Error("Venta no encontrada");
+    const prevItems = (sale.items ?? []) as StockItem[];
+    const nextItems = args.items as StockItem[];
+    await checkStock(ctx, sale.orgId, prevItems, nextItems);
+    await ctx.db.patch(args.id, { items: args.items, updatedAt: Date.now() });
+    await applyStockDelta(ctx, prevItems, nextItems);
   },
 });
 
@@ -243,6 +302,9 @@ export const remove = mutation({
       .collect();
     for (const tx of txs) {
       await ctx.runMutation(api.finances.reverseTransaction, { transactionId: tx._id });
+    }
+    if (sale.status !== "Cancelada") {
+      await applyStockDelta(ctx, sale.items ?? [], []);
     }
     await ctx.db.delete(args.id);
   },

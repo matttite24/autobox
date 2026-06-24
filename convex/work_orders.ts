@@ -1,7 +1,63 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { requireOrgAccess, requireDocAccess } from "./access";
+
+type StockItem = { inventoryId?: string; quantity: number };
+
+// Estados en los que el stock YA fue descontado
+const ACTIVE_STATUSES = new Set(["En Progreso", "Listo", "Entregado", "Completada"]);
+
+function isStockActive(status: string) {
+  return ACTIVE_STATUSES.has(status);
+}
+
+async function applyStockDelta(
+  ctx: { runMutation: Function },
+  prevItems: StockItem[],
+  nextItems: StockItem[]
+) {
+  const delta = new Map<string, number>();
+  for (const item of prevItems) {
+    if (item.inventoryId) delta.set(item.inventoryId, (delta.get(item.inventoryId) ?? 0) + item.quantity);
+  }
+  for (const item of nextItems) {
+    if (item.inventoryId) delta.set(item.inventoryId, (delta.get(item.inventoryId) ?? 0) - item.quantity);
+  }
+  for (const [inventoryId, d] of delta.entries()) {
+    if (d !== 0) {
+      await ctx.runMutation(internal.inventory.adjustStock, { inventoryId: inventoryId as any, delta: d });
+    }
+  }
+}
+
+async function checkStock(
+  ctx: { db: any },
+  orgId: string,
+  prevItems: StockItem[],
+  nextItems: StockItem[]
+) {
+  const settings = await ctx.db
+    .query("organization_settings")
+    .withIndex("by_org", (q: any) => q.eq("orgId", orgId))
+    .first();
+  if (settings?.allowNegativeStock) return;
+
+  const netRemove = new Map<string, number>();
+  for (const item of nextItems) {
+    if (item.inventoryId) netRemove.set(item.inventoryId, (netRemove.get(item.inventoryId) ?? 0) + item.quantity);
+  }
+  for (const item of prevItems) {
+    if (item.inventoryId) netRemove.set(item.inventoryId, (netRemove.get(item.inventoryId) ?? 0) - item.quantity);
+  }
+  for (const [inventoryId, need] of netRemove.entries()) {
+    if (need <= 0) continue;
+    const inv = await ctx.db.get(inventoryId);
+    if (inv && inv.quantity < need) {
+      throw new ConvexError(`Stock insuficiente para "${inv.name}": disponible ${inv.quantity}, requerido ${need}.`);
+    }
+  }
+}
 
 type VehicleUpdate = {
   mileage?: number;
@@ -195,11 +251,21 @@ export const updateStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireDocAccess(ctx, "work_orders", args.id);
-    return await ctx.db.patch(args.id, {
-      status: args.status,
-      updatedAt: Date.now(),
-    });
+    const { doc: order } = await requireDocAccess(ctx, "work_orders", args.id);
+    if (!order) throw new Error("Orden no encontrada");
+    const wasActive = isStockActive(order.status);
+    const willBeActive = isStockActive(args.status);
+    const isCancelling = args.status === "Cancelada";
+    const items = (order.items ?? []) as StockItem[];
+
+    if (!wasActive && willBeActive) {
+      await checkStock(ctx, order.orgId, [], items);
+      await applyStockDelta(ctx, [], items);
+    } else if (wasActive && isCancelling) {
+      await applyStockDelta(ctx, items, []);
+    }
+
+    return await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() });
   },
 });
 
@@ -309,15 +375,22 @@ export const updateItems = mutation({
         quantity: v.number(),
         unitPrice: v.number(),
         total: v.number(),
+        inventoryId: v.optional(v.id("inventory")),
       })
     ),
   },
   handler: async (ctx, args) => {
-    await requireDocAccess(ctx, "work_orders", args.id);
-    return await ctx.db.patch(args.id, {
-      items: args.items,
-      updatedAt: Date.now(),
-    });
+    const { doc: order } = await requireDocAccess(ctx, "work_orders", args.id);
+    if (!order) throw new Error("Orden no encontrada");
+    const prevItems = (order.items ?? []) as StockItem[];
+    const nextItems = args.items as StockItem[];
+    if (isStockActive(order.status)) {
+      await checkStock(ctx, order.orgId, prevItems, nextItems);
+      await ctx.db.patch(args.id, { items: args.items, updatedAt: Date.now() });
+      await applyStockDelta(ctx, prevItems, nextItems);
+    } else {
+      await ctx.db.patch(args.id, { items: args.items, updatedAt: Date.now() });
+    }
   },
 });
 
@@ -404,6 +477,53 @@ export const updatePayments = mutation({
   },
 });
 
+export const createCotizacion = mutation({
+  args: {
+    orgId: v.id("organizations"),
+    clientId: v.id("clients"),
+    vehicleId: v.optional(v.id("vehicles")),
+    symptoms: v.optional(v.string()),
+    inspection: v.optional(v.string()),
+    mileage: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireOrgAccess(ctx, args.orgId);
+    const now = Date.now();
+
+    const lastOrder = await ctx.db
+      .query("work_orders")
+      .withIndex("by_org_number", (q) => q.eq("orgId", args.orgId))
+      .order("desc")
+      .first();
+    const nextNumber = lastOrder?.number ? lastOrder.number + 1 : 1;
+
+    return await ctx.db.insert("work_orders", {
+      orgId: args.orgId,
+      number: nextNumber,
+      clientId: args.clientId,
+      vehicleId: args.vehicleId,
+      symptoms: args.symptoms ?? "",
+      inspection: args.inspection ?? "",
+      mileage: args.mileage,
+      status: "Pendiente",
+      kind: "cotizacion",
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const convertToOrden = mutation({
+  args: { id: v.id("work_orders") },
+  handler: async (ctx, args) => {
+    const { doc: cotizacion } = await requireDocAccess(ctx, "work_orders", args.id);
+    if (!cotizacion) throw new Error("Cotización no encontrada");
+    if (cotizacion.kind !== "cotizacion") throw new Error("Este documento ya es una ODT");
+    await ctx.db.patch(args.id, { kind: "orden", updatedAt: Date.now() });
+    return args.id;
+  },
+});
+
 export const remove = mutation({
   args: {
     id: v.id("work_orders"),
@@ -425,6 +545,10 @@ export const remove = mutation({
       .collect();
     for (const tx of txs) {
       await ctx.runMutation(api.finances.reverseTransaction, { transactionId: tx._id });
+    }
+    // Restaurar stock solo si estaba en fase activa (no Pendiente ni Cancelada)
+    if (isStockActive(order.status)) {
+      await applyStockDelta(ctx, order.items ?? [], []);
     }
     await ctx.db.delete(args.id);
   },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useQuery } from "convex/react";
 import type { Id } from "@convex/_generated/dataModel";
 import { useSearchParams } from "next/navigation";
@@ -104,18 +104,18 @@ function renderPaymentRows(payments: Array<{ id: string; method: string; amount:
     .join("");
 }
 
-export default function DocumentPrintPage() {
+function DocumentPrintPage() {
   const params = useSearchParams();
-  const kind = params.get("kind") as "orden" | "venta" | "compra" | "etiqueta" | "ticket" | null;
+  const kind = params.get("kind") as "orden" | "cotizacion" | "venta" | "compra" | "etiqueta" | "ticket" | null;
   const id = params.get("id");
   const templateId = params.get("templateId");
   const printedRef = useRef(false);
 
-  const order = useQuery(api.work_orders.getById, kind === "orden" && id ? { id: id as Id<"work_orders"> } : "skip");
+  const order = useQuery(api.work_orders.getById, (kind === "orden" || kind === "cotizacion") && id ? { id: id as Id<"work_orders"> } : "skip");
   const sale = useQuery(api.sales.getById, (kind === "venta" || kind === "ticket") && id ? { id: id as Id<"sales"> } : "skip");
   const purchase = useQuery(api.purchases.getById, kind === "compra" && id ? { id: id as Id<"purchases"> } : "skip");
   const product = useQuery(api.inventory.getById, kind === "etiqueta" && id ? { id: id as Id<"inventory"> } : "skip");
-  const orgId = kind === "orden" ? order?.orgId
+  const orgId = (kind === "orden" || kind === "cotizacion") ? order?.orgId
     : (kind === "venta" || kind === "ticket") ? sale?.orgId
     : kind === "compra" ? purchase?.orgId
     : kind === "etiqueta" ? product?.orgId
@@ -126,7 +126,7 @@ export default function DocumentPrintPage() {
     document.title = "Imprimir documento";
   }, []);
 
-  const source = kind === "orden" ? order
+  const source = (kind === "orden" || kind === "cotizacion") ? order
     : (kind === "venta" || kind === "ticket") ? sale
     : kind === "compra" ? purchase
     : kind === "etiqueta" ? product
@@ -142,8 +142,8 @@ export default function DocumentPrintPage() {
       content: generateHtmlFromBlocks(tpl.blocks, tpl.kind),
       updatedAt: Date.now(),
     }));
-    // For etiqueta/ticket filter to matching kind; if none saved yet use defaults
-    if (kind === "etiqueta" || kind === "ticket") {
+    // For specialized kinds filter to matching kind; fallback to all if none saved
+    if (kind === "cotizacion" || kind === "etiqueta" || kind === "ticket") {
       const filtered = base.filter((t) => t.kind === kind);
       return filtered.length > 0 ? filtered : base;
     }
@@ -197,6 +197,41 @@ export default function DocumentPrintPage() {
         },
         order: {
           ...source,
+          createdAt: new Date(source._creationTime).toLocaleString(),
+          updatedAt: new Date(source._creationTime).toLocaleString(),
+        },
+      };
+    }
+
+    if (kind === "cotizacion" && "clientData" in source) {
+      const allItems = source.items ?? [];
+      const subtotal = allItems.reduce((acc, item) => acc + item.total, 0);
+      const taxRate = (settings.taxRate ?? 0) / 100;
+      const iva = subtotal * taxRate;
+      const total = subtotal + iva;
+      const cotNum = `COT-${String(source.number ?? "").padStart(4, "0")}`;
+      return {
+        organization,
+        client: source.clientData ?? {},
+        vehicle: ("vehicleData" in source ? (source as Record<string, unknown>).vehicleData : null) ?? {},
+        items: {
+          count: allItems.length,
+          table: renderItemRows(allItems),
+          groupedTable: renderGroupedTable(allItems),
+        },
+        payments: { count: 0, table: "" },
+        totals: {
+          subtotal: formatMoney(subtotal),
+          iva: formatMoney(iva),
+          total: formatMoney(total),
+          paid: formatMoney(0),
+          balance: formatMoney(total),
+        },
+        facturacion: { status: "", label: "" },
+        order: {
+          ...source,
+          number: cotNum,
+          status: "Cotización",
           createdAt: new Date(source._creationTime).toLocaleString(),
           updatedAt: new Date(source._creationTime).toLocaleString(),
         },
@@ -390,5 +425,13 @@ export default function DocumentPrintPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DocumentPrintPageWrapper() {
+  return (
+    <Suspense>
+      <DocumentPrintPage />
+    </Suspense>
   );
 }

@@ -47,7 +47,7 @@ export default defineSchema({
     templates: v.optional(v.array(v.object({
       id: v.string(),
       name: v.string(),
-      kind: v.union(v.literal("orden"), v.literal("venta"), v.literal("etiqueta"), v.literal("ticket"), v.literal("custom")),
+      kind: v.union(v.literal("orden"), v.literal("cotizacion"), v.literal("venta"), v.literal("etiqueta"), v.literal("ticket"), v.literal("custom")),
       format: v.literal("html"),
       content: v.string(),
       updatedAt: v.number(),
@@ -59,6 +59,7 @@ export default defineSchema({
     datilEstablecimiento: v.optional(v.string()),
     datilPuntoEmision: v.optional(v.string()),
     datilObligadoContabilidad: v.optional(v.union(v.literal("SI"), v.literal("NO"))),
+    allowNegativeStock: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -319,6 +320,7 @@ export default defineSchema({
           quantity: v.number(),
           unitPrice: v.number(),
           total: v.number(),
+          inventoryId: v.optional(v.id("inventory")),
         })
       )
     ),
@@ -354,6 +356,7 @@ export default defineSchema({
     datilLastError: v.optional(v.string()),
     facturadaAt: v.optional(v.number()),
     facturacionAttempts: v.optional(v.number()),
+    kind: v.optional(v.union(v.literal("orden"), v.literal("cotizacion"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -361,6 +364,7 @@ export default defineSchema({
     .index("by_org", ["orgId"])
     .index("by_org_and_status", ["orgId", "status"])
     .index("by_org_number", ["orgId", "number"])
+    .index("by_org_and_kind", ["orgId", "kind"])
     .searchIndex("search_symptoms", { searchField: "symptoms", filterFields: ["orgId"] })
     .searchIndex("search_inspection", { searchField: "inspection", filterFields: ["orgId"] }),
 
@@ -383,6 +387,7 @@ export default defineSchema({
           quantity: v.number(),
           unitPrice: v.number(),
           total: v.number(),
+          inventoryId: v.optional(v.id("inventory")),
         })
       )
     ),

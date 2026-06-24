@@ -31,6 +31,7 @@ import {
   makeBlock,
   generateHtmlFromBlocks,
   defaultOrderBlocks,
+  defaultCotizacionBlocks,
   defaultSaleBlocks,
   defaultLabelBlocks,
   defaultTicketBlocks,
@@ -331,7 +332,7 @@ function BlockConfigEditor({ block, onChange }: { block: AnyBlock; onChange: (cf
           <Toggle label="Mostrar campo de fecha" checked={cfg.showDate} onChange={(v) => update({ showDate: v })} />
           <div className="space-y-1.5">
             {cfg.slots.map((slot, i) => (
-              <div key={i} className="rounded-lg border p-2 space-y-1.5">
+              <div key={`${slot.label}-${i}`} className="rounded-lg border p-2 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Firmante {i + 1}</span>
                   {cfg.slots.length > 1 && (
@@ -675,6 +676,7 @@ function NewTemplateDialog({
   const handleCreate = () => {
     const defaultBlocksMap: Record<TemplateKind, () => AnyBlock[]> = {
       orden: defaultOrderBlocks,
+      cotizacion: defaultCotizacionBlocks,
       venta: defaultSaleBlocks,
       etiqueta: defaultLabelBlocks,
       ticket: defaultTicketBlocks,
@@ -703,7 +705,7 @@ function NewTemplateDialog({
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Tipo</Label>
             <div className="grid grid-cols-3 gap-1.5">
-              {(["orden", "venta", "etiqueta", "ticket", "custom"] as TemplateKind[]).map((k) => (
+              {(["orden", "cotizacion", "venta", "etiqueta", "ticket", "custom"] as TemplateKind[]).map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -713,12 +715,12 @@ function NewTemplateDialog({
                     kind === k ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground/40",
                   )}
                 >
-                  {k === "ticket" ? "Ticket" : k === "etiqueta" ? "Etiqueta" : k === "custom" ? "Libre" : k.charAt(0).toUpperCase() + k.slice(1)}
+                  {KIND_LABELS[k]}
                 </button>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              {kind === "ticket" ? "Formato para impresora térmica de 80mm." : kind === "etiqueta" ? "Etiqueta de producto para inventario." : kind === "custom" ? "Sin bloques por defecto." : `Plantilla para documentos de ${kind}.`}
+              {kind === "ticket" ? "Formato para impresora térmica de 80mm." : kind === "etiqueta" ? "Etiqueta de producto para inventario." : kind === "cotizacion" ? "Proforma / cotización sin pagos." : kind === "custom" ? "Sin bloques por defecto." : `Plantilla para documentos de ${kind}.`}
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
@@ -735,6 +737,7 @@ function NewTemplateDialog({
 
 const KIND_LABELS: Record<TemplateKind, string> = {
   orden: "Orden de trabajo",
+  cotizacion: "Cotización",
   venta: "Venta",
   etiqueta: "Etiqueta",
   ticket: "Ticket térmico",
@@ -852,13 +855,14 @@ export function BlockEditor({ templates, onChange }: Props) {
           placeholder="Nombre de la plantilla"
         />
         <div className="flex items-center gap-1 rounded-lg border bg-muted/20 px-1 py-1 shrink-0">
-          {(["orden", "venta", "etiqueta", "ticket", "custom"] as TemplateKind[]).map((k) => (
+          {(["orden", "cotizacion", "venta", "etiqueta", "ticket", "custom"] as TemplateKind[]).map((k) => (
             <button
               key={k}
               type="button"
               onClick={() => {
                 const defaultBlocksMap: Record<TemplateKind, () => AnyBlock[]> = {
-                  orden: defaultOrderBlocks, venta: defaultSaleBlocks,
+                  orden: defaultOrderBlocks, cotizacion: defaultCotizacionBlocks,
+                  venta: defaultSaleBlocks,
                   etiqueta: defaultLabelBlocks, ticket: defaultTicketBlocks, custom: () => active.blocks,
                 };
                 updateTemplate({ kind: k, blocks: active.blocks.length === 0 ? defaultBlocksMap[k]() : active.blocks });

@@ -1,7 +1,7 @@
 export type TemplateRecord = {
   id: string;
   name: string;
-  kind: "orden" | "venta" | "etiqueta" | "ticket" | "custom";
+  kind: "orden" | "cotizacion" | "venta" | "etiqueta" | "ticket" | "custom";
   format: "html";
   content: string;
   updatedAt: number;

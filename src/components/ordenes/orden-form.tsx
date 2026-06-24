@@ -77,6 +77,7 @@ interface OrdenFormProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  kind?: "orden" | "cotizacion";
   orderToEdit?: {
     _id: Id<"work_orders">;
     clientId: Id<"clients">;
@@ -90,9 +91,10 @@ interface OrdenFormProps {
 }
 
 // ─── Main export ───────────────────────────────────────────────────────────────
-export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalOnOpenChange, orderToEdit }: OrdenFormProps) {
+export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalOnOpenChange, orderToEdit, kind = "orden" }: OrdenFormProps) {
   const { orgId } = useOrg();
   const createOrder = useMutation(api.work_orders.create);
+  const createCotizacion = useMutation(api.work_orders.createCotizacion);
   const updateOrderDetails = useMutation(api.work_orders.updateDetails);
   const createVehicle = useMutation(api.vehicles.create);
   const createClient = useMutation(api.clients.create);
@@ -131,25 +133,33 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
     setIsEditingMileageForm(false);
   };
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevOrderToEdit, setPrevOrderToEdit] = useState(orderToEdit);
+
+  if (open !== prevOpen || orderToEdit !== prevOrderToEdit) {
+    setPrevOpen(open);
+    setPrevOrderToEdit(orderToEdit);
     if (open) {
-      queueMicrotask(() => {
-        if (orderToEdit) {
-          setForm({
-            ...EMPTY,
-            clientId: orderToEdit.clientId,
-            vehicleId: orderToEdit.vehicleId || "",
-            isNewVehicle: false,
-            inspection: orderToEdit.inspection || "",
-            mileage: orderToEdit.mileage?.toString() || "",
-          });
-          setIsEditingMileageForm(false);
-        } else {
-          reset();
-        }
-      });
+      if (orderToEdit) {
+        setForm({
+          ...EMPTY,
+          clientId: orderToEdit.clientId,
+          vehicleId: orderToEdit.vehicleId || "",
+          isNewVehicle: false,
+          inspection: orderToEdit.inspection || "",
+          mileage: orderToEdit.mileage?.toString() || "",
+        });
+        setIsEditingMileageForm(false);
+      } else {
+        setForm(EMPTY);
+        setClientSearch("");
+        setNewClientData({ name: "", email: "", phone: "" });
+        setShowNewClientForm(false);
+        setActiveIdx(-1);
+        setIsEditingMileageForm(false);
+      }
     }
-  }, [open, orderToEdit]);
+  }
 
   // ── Keyboard handler for client search ───────────────────────────────────
   const handleSearchKey = useCallback(
@@ -212,7 +222,7 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
 
   // ── Submit ───────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!form.symptoms.trim()) {
+    if (kind === "orden" && !form.symptoms.trim()) {
       return toastManager.add({ type: "error", title: "Error", description: "Detalla el motivo de ingreso." });
     }
     setSubmitting(true);
@@ -241,6 +251,17 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
           mileage: form.mileage ? parseInt(form.mileage) : undefined,
         });
         toastManager.add({ type: "success", title: "Orden actualizada", description: "Los detalles han sido guardados." });
+      } else if (kind === "cotizacion") {
+        if (!orgId) throw new Error("Org ID is required");
+        await createCotizacion({
+          orgId,
+          clientId: form.clientId as Id<"clients">,
+          vehicleId: vehicleId ? vehicleId as Id<"vehicles"> : undefined,
+          symptoms: form.symptoms,
+          inspection: form.inspection,
+          mileage: form.mileage ? parseInt(form.mileage) : undefined,
+        });
+        toastManager.add({ type: "success", title: "Cotización creada", description: "Puedes agregar ítems y luego imprimir o convertir a ODT." });
       } else {
         if (!orgId) throw new Error("Org ID is required");
         await createOrder({
@@ -276,7 +297,7 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
       <DrawerPopup showBar className="sm:max-w-2xl sm:mx-auto sm:min-h-[70vh]">
         <DrawerHeader className="text-center">
           <StepBadge n={1} label="Paso 1 de 3" icon={UserCircleIcon} />
-          <DrawerTitle className="mt-2">{orderToEdit ? "Editar Cliente" : "Seleccionar Cliente"}</DrawerTitle>
+          <DrawerTitle className="mt-2">{orderToEdit ? "Editar Cliente" : kind === "cotizacion" ? "Nueva Cotización — Cliente" : "Seleccionar Cliente"}</DrawerTitle>
           <DrawerDescription>¿A quién le pertenece esta orden de trabajo?</DrawerDescription>
         </DrawerHeader>
 
@@ -797,7 +818,7 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
                         disabled={submitting || !form.symptoms.trim()}
                         onClick={() => handleSubmit()}
                       >
-                        {submitting ? "Guardando..." : (orderToEdit ? "Guardar Cambios" : "Confirmar Ingreso")}
+                        {submitting ? "Guardando..." : (orderToEdit ? "Guardar Cambios" : kind === "cotizacion" ? "Crear Cotización" : "Confirmar Ingreso")}
                       </Button>
                     </DrawerFooter>
 

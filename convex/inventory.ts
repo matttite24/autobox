@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { paginationOptsValidator } from "convex/server";
@@ -343,5 +343,20 @@ export const bulkCreate = mutation({
     }
 
     return { created, skipped };
+  },
+});
+
+export const adjustStock = internalMutation({
+  args: {
+    inventoryId: v.id("inventory"),
+    delta: v.number(), // positive = add stock, negative = remove stock
+  },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.inventoryId);
+    if (!item) return;
+    await ctx.db.patch(args.inventoryId, {
+      quantity: item.quantity + args.delta,
+      updatedAt: Date.now(),
+    });
   },
 });

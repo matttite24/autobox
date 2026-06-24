@@ -15,6 +15,7 @@ import {
 
 import { DailyCashWidget } from "@/components/finanzas/daily-cash-widget";
 import { RevenueChartWidget } from "@/components/reports/revenue-chart-widget";
+import { OnboardingChecklist } from "@/components/onboarding/onboarding-checklist";
 import { GreetingMessage } from "./greeting";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -49,7 +50,7 @@ const quickActions = [
 
 export default function InicioPage() {
   return (
-    <main className="relative isolate flex min-h-screen flex-1 flex-col px-4 py-6 sm:px-6 md:items-center md:justify-center">
+    <main className="relative isolate flex min-h-screen flex-1 flex-col items-center px-4 py-8 sm:px-6">
       <div className="absolute left-4 top-4 z-50 md:hidden">
         <SidebarTrigger className="h-10 w-10 border bg-background/50 backdrop-blur-sm" />
       </div>
@@ -66,7 +67,7 @@ export default function InicioPage() {
         <Wrench01Icon       className="absolute text-foreground" style={{ width: 95,  height: 95,  bottom: "10%", right: "6%" }} />
       </div>
 
-      <div className="relative z-10 w-full max-w-4xl space-y-6 sm:space-y-8 pt-14 md:pt-0 md:mt-[-60px] pb-8">
+      <div className="relative z-10 w-full max-w-4xl space-y-6 sm:space-y-8 pt-12 md:pt-8 pb-10">
         <section
           className="animate-in fade-in slide-in-from-bottom-4 duration-700"
           style={{ animationFillMode: "both", animationDelay: "0ms" }}
@@ -76,6 +77,13 @@ export default function InicioPage() {
               <GreetingMessage />
             </h1>
           </div>
+        </section>
+
+        <section
+          className="animate-in fade-in slide-in-from-bottom-4 duration-700"
+          style={{ animationFillMode: "both", animationDelay: "100ms" }}
+        >
+          <OnboardingChecklist />
         </section>
 
         <section className="grid gap-6 grid-cols-1 md:grid-cols-2 items-stretch">

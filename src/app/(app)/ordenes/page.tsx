@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { Suspense, useState, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 import { useQuery, useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
 import { api } from "@convex/_generated/api";
 import { useOrg } from "@/components/providers/org-provider";
 import { AppHeader } from "@/components/app-header";
@@ -13,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { type Doc, Id } from "@convex/_generated/dataModel";
 import {
   AlertDialog,
+  AlertDialogClose,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -90,7 +92,7 @@ const ADVANCE_COLORS: Record<string, string> = {
 
 const ACTIVE_STATUSES = new Set(["Pendiente", "En Progreso", "Listo", "Entregado"]);
 
-export default function OrdenesPage() {
+function OrdenesPage() {
   const { orgId } = useOrg();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -106,6 +108,7 @@ export default function OrdenesPage() {
   const [initialOpenOrderId] = useState<string | null>(() => searchParams.get("orderId"));
   const [deliveryConfirmOrderId, setDeliveryConfirmOrderId] = useState<Id<"work_orders"> | null>(null);
   const [closeConfirmOrderId, setCloseConfirmOrderId] = useState<Id<"work_orders"> | null>(null);
+  const [startRepairOrderId, setStartRepairOrderId] = useState<Id<"work_orders"> | null>(null);
 
   useEffect(() => {
     const isNew = searchParams.get("new") === "1";
@@ -121,6 +124,10 @@ export default function OrdenesPage() {
   useNewShortcut(() => setIsFormOpen(true));
 
   const handleAdvance = async (orderId: Id<"work_orders">, currentStatus: string) => {
+    if (currentStatus === "Pendiente") {
+      setStartRepairOrderId(orderId);
+      return;
+    }
     const currentIndex = STATUSES.findIndex(s => s.id === currentStatus);
     if (currentIndex < STATUSES.length - 1) {
       try {
@@ -128,6 +135,29 @@ export default function OrdenesPage() {
       } catch {
         toastManager.add({ type: "error", title: "Error", description: "No se pudo avanzar la orden." });
       }
+    }
+  };
+
+  const confirmStartRepair = async () => {
+    if (!startRepairOrderId) return;
+    try {
+      await updateStatus({ id: startRepairOrderId, status: "En Progreso" });
+    } catch (e: unknown) {
+      const msg = e instanceof ConvexError
+        ? String(e.data)
+        : "No se pudo iniciar la reparación.";
+      toastManager.add({ type: "error", title: "Stock insuficiente", description: msg });
+    } finally {
+      setStartRepairOrderId(null);
+    }
+  };
+
+  const handleComplete = async (orderId: Id<"work_orders">) => {
+    try {
+      await updateStatus({ id: orderId, status: "Completada" });
+    } catch (e: unknown) {
+      const msg = e instanceof ConvexError ? String(e.data) : "No se pudo cerrar la orden.";
+      toastManager.add({ type: "error", title: "Error", description: msg });
     }
   };
 
@@ -147,6 +177,7 @@ export default function OrdenesPage() {
     const term = debouncedSearchTerm.trim().toLowerCase();
     const filtered = orders.filter((order) => {
       if (!ACTIVE_STATUSES.has(order.status)) return false;
+      if (order.kind === "cotizacion") return false;
       const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
       if (!matchesStatus) return false;
       if (!term) return true;
@@ -405,7 +436,7 @@ export default function OrdenesPage() {
                                                 <Button variant="ghost" onClick={() => setCloseConfirmOrderId(null)}>Cancelar</Button>
                                                 <Button variant="ghost" className="bg-slate-800 hover:bg-slate-900 text-white hover:text-white dark:bg-slate-200 dark:hover:bg-slate-300 dark:text-slate-900" onClick={async (e) => {
                                                   e.stopPropagation();
-                                                  await updateStatus({ id: order._id, status: "Completada" });
+                                                  await handleComplete(order._id);
                                                   setCloseConfirmOrderId(null);
                                                 }}>Sí, Cerrar</Button>
                                               </AlertDialogFooter>
@@ -476,6 +507,35 @@ export default function OrdenesPage() {
           </div>
         </div>
       </main>
+
+      {/* Alert: confirmar inicio de reparación */}
+      <AlertDialog open={!!startRepairOrderId} onOpenChange={(open) => { if (!open) setStartRepairOrderId(null); }}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Iniciar reparación?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A partir de este momento los repuestos y productos añadidos a la orden
+              se descontarán del inventario automáticamente. Esta acción no se puede deshacer
+              sin anular la orden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="ghost" type="button">Cancelar</Button>} />
+            <AlertDialogClose
+              render={<Button type="button">Sí, iniciar reparación</Button>}
+              onClick={confirmStartRepair}
+            />
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </div>
+  );
+}
+
+export default function OrdenesPageWrapper() {
+  return (
+    <Suspense>
+      <OrdenesPage />
+    </Suspense>
   );
 }

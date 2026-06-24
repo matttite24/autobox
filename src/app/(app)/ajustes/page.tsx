@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -13,7 +14,7 @@ import { PerfilSettingsSection } from "@/components/ajustes/perfil-settings-sect
 import { Button } from "@/components/ui/button";
 import { FloppyDiskIcon } from "hugeicons-react";
 
-export default function AjustesPage() {
+function AjustesPage() {
   const { orgId } = useOrg();
   const searchParams = useSearchParams();
   const org = useQuery(api.organizations.current, {});
@@ -152,6 +153,7 @@ export default function AjustesPage() {
           description="Define los planes de rentabilidad que luego se aplican a los productos."
           profitPlans={bank.profitPlans}
           defaultProfitPlanId={bank.defaultProfitPlanId}
+          allowNegativeStock={settings?.allowNegativeStock ?? false}
           onSave={async (next) => {
             if (!orgId) return;
             await saveSettings({
@@ -211,5 +213,13 @@ export default function AjustesPage() {
         <PerfilSettingsSection visible={section === "perfil"} />
       </div>
     </div>
+  );
+}
+
+export default function AjustesPageWrapper() {
+  return (
+    <Suspense>
+      <AjustesPage />
+    </Suspense>
   );
 }

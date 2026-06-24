@@ -135,7 +135,7 @@ export const upsertSettings = mutation({
     templates: v.optional(v.array(v.object({
       id: v.string(),
       name: v.string(),
-      kind: v.union(v.literal("orden"), v.literal("venta"), v.literal("etiqueta"), v.literal("ticket"), v.literal("custom")),
+      kind: v.union(v.literal("orden"), v.literal("cotizacion"), v.literal("venta"), v.literal("etiqueta"), v.literal("ticket"), v.literal("custom")),
       format: v.literal("html"),
       content: v.string(),
       updatedAt: v.number(),
@@ -147,6 +147,7 @@ export const upsertSettings = mutation({
     datilEstablecimiento: v.optional(v.string()),
     datilPuntoEmision: v.optional(v.string()),
     datilObligadoContabilidad: v.optional(v.union(v.literal("SI"), v.literal("NO"))),
+    allowNegativeStock: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireOrgAccess(ctx, args.orgId);
@@ -182,6 +183,7 @@ export const upsertSettings = mutation({
       datilEstablecimiento: args.datilEstablecimiento,
       datilPuntoEmision: args.datilPuntoEmision,
       datilObligadoContabilidad: args.datilObligadoContabilidad,
+      allowNegativeStock: args.allowNegativeStock,
       updatedAt: now,
     };
 

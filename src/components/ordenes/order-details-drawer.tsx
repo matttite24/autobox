@@ -485,13 +485,14 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
         </DrawerPopup>
 
         {/* Nested Drawers extracted to components (must be inside main Drawer to keep zoom effect) */}
-        <OrderAddItemDrawer 
+        <OrderAddItemDrawer
           entityId={order._id}
           entityType="order"
           orgId={order.orgId}
           items={items}
           open={addItemOpen}
           onOpenChange={setAddItemOpen}
+          orderStatus={order.status}
           itemToEdit={itemToEdit}
         />
 

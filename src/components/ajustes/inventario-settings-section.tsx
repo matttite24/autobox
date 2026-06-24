@@ -13,13 +13,16 @@ type Props = {
   description: string;
   profitPlans: ProfitPlan[];
   defaultProfitPlanId?: string;
-  onSave: (next: { profitPlans: ProfitPlan[]; defaultProfitPlanId?: string }) => Promise<void>;
+  allowNegativeStock?: boolean;
+  onSave: (next: { profitPlans: ProfitPlan[]; defaultProfitPlanId?: string; allowNegativeStock: boolean }) => Promise<void>;
 };
 
-export function InventarioSettingsSection({ visible, formId, title, description, profitPlans, defaultProfitPlanId, onSave }: Props) {
-  const [saving, setSaving] = useState(false);
+export function InventarioSettingsSection({ visible, formId, title, description, profitPlans, defaultProfitPlanId, allowNegativeStock, onSave }: Props) {
+
   const [plans, setPlans] = useState<ProfitPlan[]>(profitPlans);
   const [defaultPlanId, setDefaultPlanId] = useState(defaultProfitPlanId || plans[0]?.id || "");
+  const [negativeStock, setNegativeStock] = useState(allowNegativeStock ?? false);
+
   const editablePlans = Array.from({ length: 3 }, (_, index) => plans[index] ?? {
     id: `plan-${index + 1}`,
     name: ["Plan 1", "Plan 2", "Plan 3"][index],
@@ -40,16 +43,31 @@ export function InventarioSettingsSection({ visible, formId, title, description,
         className="space-y-4"
         onSubmit={async (e) => {
           e.preventDefault();
-          setSaving(true);
           try {
-            await onSave({ profitPlans: editablePlans, defaultProfitPlanId: defaultPlanId || undefined });
-            toastManager.add({ type: "success", title: "Guardado", description: "Los planes de rentabilidad se actualizaron." });
-          } finally {
-            setSaving(false);
+            await onSave({ profitPlans: editablePlans, defaultProfitPlanId: defaultPlanId || undefined, allowNegativeStock: negativeStock });
+            toastManager.add({ type: "success", title: "Guardado", description: "Los ajustes de inventario se actualizaron." });
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "No se pudieron guardar los ajustes.";
+            toastManager.add({ type: "error", title: "Error al guardar", description: msg });
           }
         }}
       >
         <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/20 p-4">
+            <div>
+              <p className="text-sm font-medium">Permitir stock negativo</p>
+              <p className="text-xs text-muted-foreground">Permite vender o añadir productos a órdenes aunque no haya stock disponible.</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={negativeStock}
+              onClick={() => setNegativeStock(!negativeStock)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${negativeStock ? "bg-primary" : "bg-input"}`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${negativeStock ? "translate-x-5" : "translate-x-0"}`} />
+            </button>
+          </div>
           <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/20 p-4">
             <span className="text-sm font-medium">Plan por defecto</span>
             <select className="h-9 rounded-lg border bg-background px-3 text-sm" value={defaultPlanId} onChange={(e) => setDefaultPlanId(e.target.value)}>
