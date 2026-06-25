@@ -54,7 +54,7 @@ type PayrollRun = {
   totalAdvances: number;
   totalNet: number;
 };
-type Worker = { _id: Id<"clients">; name: string; type?: "Cliente" | "Proveedor" | "Trabajador"; employmentStatus?: "Activo" | "Inactivo" };
+type Worker = { _id: Id<"clients">; name: string; type?: "Cliente" | "Proveedor" | "Trabajador"; roles?: ("Cliente" | "Proveedor" | "Trabajador")[]; employmentStatus?: "Activo" | "Inactivo" };
 type Bank = { _id: Id<"banks">; name: string };
 type PayrollAdjustment = { _id: Id<"payroll_adjustments">; kind: "Ingreso" | "Descuento"; concept: string; amount: number };
 type SalaryAdvance = { _id: Id<"salary_advances">; amount: number; status: string; selected?: boolean; transaction?: { description?: string } | null };
@@ -156,7 +156,10 @@ export default function NominaPage() {
   );
   const availableWorkers = useMemo(() => {
     const used = new Set((details?.payments ?? []).map((payment) => String(payment.workerId)));
-    return (workers ?? []).filter((worker) => worker.type === "Trabajador" && worker.employmentStatus === "Activo" && !used.has(String(worker._id)));
+    return (workers ?? []).filter((worker) => {
+      const roles = worker.roles && worker.roles.length > 0 ? worker.roles : [worker.type ?? "Cliente"];
+      return roles.includes("Trabajador") && worker.employmentStatus === "Activo" && !used.has(String(worker._id));
+    });
   }, [details?.payments, workers]);
   const paymentsPageSize = 10;
   const paymentsTotal = filteredPayments.length;

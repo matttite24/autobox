@@ -161,6 +161,11 @@ export default defineSchema({
       v.literal("Proveedor"),
       v.literal("Trabajador")
     )),
+    roles: v.optional(v.array(v.union(
+      v.literal("Cliente"),
+      v.literal("Proveedor"),
+      v.literal("Trabajador")
+    ))),
     name: v.string(),
     documentId: v.optional(v.string()), // RUC/CI
     email: v.string(),
@@ -298,8 +303,11 @@ export default defineSchema({
     clientId: v.id("clients"),
     vehicleId: v.optional(v.id("vehicles")), // Optional temporarily to avoid breaking old data
     vehicle: v.optional(v.string()), // Legacy field
+    assignedWorkerId: v.optional(v.id("clients")), // Técnico asignado (type=Trabajador)
+    estimatedDeliveryDate: v.optional(v.number()), // Timestamp de fecha estimada de entrega
     issue: v.optional(v.string()), // Legacy field
     symptoms: v.optional(v.string()),
+    symptomsChecked: v.optional(v.array(v.number())),
     inspection: v.optional(v.string()),
     mileage: v.optional(v.number()),
     nextMileage: v.optional(v.number()),

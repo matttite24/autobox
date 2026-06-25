@@ -11,6 +11,7 @@ import { OrderAddItemDrawer } from "./order-add-item-drawer";
 import { OrderMileageDrawer } from "./order-mileage-drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import {
   Drawer,
   DrawerClose,
@@ -34,16 +35,21 @@ import { FinancialSummaryFooter } from "@/components/ui/financial-summary-footer
 import { toastManager } from "@/components/ui/toast";
 import { DatilInvoiceModal } from "@/components/facturacion/datil-invoice-modal";
 import { PrintTemplateButton } from "@/components/documentos/print-template-button";
-import { 
-  Car01Icon, 
-  UserIcon, 
-  Alert01Icon, 
-  PlusSignIcon, 
+import {
+  Car01Icon,
+  UserIcon,
+  UserSettings01Icon,
+  Alert01Icon,
+  PlusSignIcon,
   Delete02Icon,
   PencilEdit01Icon,
   Cancel01Icon,
   Wallet02Icon,
   DashboardSpeed01Icon,
+  NoteEditIcon,
+  Note01Icon,
+  FloppyDiskIcon,
+  ClipboardIcon,
 } from "hugeicons-react";
 import { OrdenForm } from "@/components/ordenes/orden-form";
 import { LineItemsTable } from "@/components/ui/line-items-table";
@@ -103,6 +109,7 @@ type OrderDetails = {
   vehicle?: string;
   vehicleData?: { make?: string; model?: string; plate?: string; color?: string; } | null;
   symptoms?: string;
+  symptomsChecked?: number[];
   issue?: string;
   inspection?: string;
   mileage?: number;
@@ -111,11 +118,16 @@ type OrderDetails = {
   payments?: OrderPayment[];
   facturacionStatus?: "pendiente" | "enviando" | "enviada" | "error";
   facturacionLabel?: string;
+  assignedWorkerId?: Id<"clients">;
+  assignedWorkerData?: { name: string; jobTitle?: string } | null;
+  estimatedDeliveryDate?: number;
 };
 
 export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { order: OrderDetails, trigger?: React.ReactNode, initialOpen?: boolean }) {
   const updateItems = useMutation(api.work_orders.updateItems);
   const updateSymptoms = useMutation(api.work_orders.updateSymptoms);
+  const updateInspection = useMutation(api.work_orders.updateInspection);
+  const updateSymptomsChecked = useMutation(api.work_orders.updateSymptomsChecked);
   const updateStatus = useMutation(api.work_orders.updateStatus);
   const removeWorkOrder = useMutation(api.work_orders.remove);
   const settings = useQuery(api.organizations.settings, order?.orgId ? { orgId: order.orgId } : "skip");
@@ -130,6 +142,9 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [mileageOpen, setMileageOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [motivosOpen, setMotivosOpen] = useState(false);
+  const [isEditingInspection, setIsEditingInspection] = useState(false);
+  const [inspectionText, setInspectionText] = useState(order.inspection || "");
 
   const items = order.items || [];
   const payments = order.payments || [];
@@ -248,7 +263,7 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
               </DrawerTitle>
               
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <button 
+                <button
                   onClick={() => { if (order.vehicleData) setVehicleSheetOpen(true); }}
                   className={`flex items-center gap-1 transition-colors ${order.vehicleData ? "hover:text-primary cursor-pointer" : "cursor-default"}`}
                 >
@@ -260,7 +275,7 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
                     <span className="font-mono bg-muted/50 px-1 rounded border uppercase">{order.vehicleData.plate}</span>
                   )}
                 </button>
-                <button 
+                <button
                   onClick={() => { if (order.clientData) setClientSheetOpen(true); }}
                   className={`flex items-center gap-1 transition-colors ${order.clientData ? "hover:text-primary cursor-pointer" : "cursor-default"}`}
                 >
@@ -268,6 +283,7 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
                   <span className="font-medium text-foreground">{order.clientName}</span>
                 </button>
               </div>
+
             </div>
 
             <div className="flex items-center">
@@ -299,61 +315,7 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
         </DrawerHeader>
 
         {/* Main Drawer Content */}
-        <DrawerPanel className="overflow-y-auto space-y-6">
-
-          <div className="bg-destructive/5 border border-destructive/10 p-3 rounded-lg text-sm text-destructive-foreground mt-4">
-            <div className="flex justify-between items-start mb-2">
-              <p className="font-medium flex items-center gap-1">
-                <Alert01Icon className="h-4 w-4" /> Motivo de ingreso
-              </p>
-              {order.status !== "Cancelada" && (
-                <button 
-                  onClick={() => setIsAddingSymptom(!isAddingSymptom)} 
-                  className="text-xs flex items-center gap-1 hover:underline text-destructive"
-                >
-                  <PlusSignIcon className="h-3.5 w-3.5" /> Añadir
-                </button>
-              )}
-            </div>
-            
-            <div className="space-y-1.5 mb-2 text-muted-foreground">
-              {(order.symptoms || order.issue)?.split('\n').map((s: string, i: number) => {
-                const text = s.trim();
-                if (!text) return null;
-                // Si no empieza con -, se lo ponemos visualmente para que todo parezca una lista
-                const hasBullet = text.startsWith('-');
-                return <p key={i}>{hasBullet ? text : `- ${text}`}</p>;
-              })}
-            </div>
-
-            {isAddingSymptom && order.status !== "Cancelada" && (
-              <div className="mt-3 flex gap-2 items-center bg-background/50 p-1.5 rounded-md border border-destructive/20">
-                <Input 
-                  value={newSymptomText} 
-                  onChange={(e) => setNewSymptomText(e.target.value)} 
-                  placeholder="Ej: Ruido al frenar..." 
-                  className="h-8 text-xs bg-background border-destructive/20 focus-visible:ring-destructive/30"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddSymptom();
-                    }
-                  }}
-                  autoFocus
-                />
-                <Button size="sm" variant="secondary" className="h-8 px-3 text-xs shrink-0" onClick={handleAddSymptom}>
-                  Guardar
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {order.inspection && (
-            <div className="text-sm">
-              <p className="font-medium mb-1 text-muted-foreground">Inspección Inicial</p>
-              <p>{order.inspection}</p>
-            </div>
-          )}
+        <DrawerPanel className="overflow-y-auto space-y-6 !pt-4">
 
           {/* Items List */}
           <div className="space-y-4">
@@ -398,6 +360,30 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
           </div>
           
         </DrawerPanel>
+
+        {/* Fila sobre el footer: técnico + entrega + ver motivos */}
+        <div className="shrink-0 flex items-center gap-3 text-xs text-muted-foreground border-t px-4 py-2 flex-wrap">
+          {order.assignedWorkerData && (
+            <span className="flex items-center gap-1">
+              <UserSettings01Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>Técnico</span>
+              <span className="text-foreground font-medium">{order.assignedWorkerData.name}</span>
+            </span>
+          )}
+          {order.estimatedDeliveryDate && (
+            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+              <span className="font-medium">Entrega</span>
+              <span>{new Date(order.estimatedDeliveryDate).toLocaleDateString("es-EC", { weekday: "short", day: "2-digit", month: "short" })}</span>
+            </span>
+          )}
+          <button
+            onClick={() => setMotivosOpen(true)}
+            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ClipboardIcon className="h-3.5 w-3.5" />
+            Ver datos
+          </button>
+        </div>
 
         {/* Main Drawer Footer */}
         <DrawerFooter className="border-t pt-4">
@@ -484,7 +470,167 @@ export function OrderDetailsDrawer({ order, trigger, initialOpen = false }: { or
         </DrawerFooter>
         </DrawerPopup>
 
-        {/* Nested Drawers extracted to components (must be inside main Drawer to keep zoom effect) */}
+        {/* Sub-drawer: Datos de ingreso */}
+        <Drawer position="right" open={motivosOpen} onOpenChange={(v) => { setMotivosOpen(v); if (!v) { setIsAddingSymptom(false); setNewSymptomText(""); setIsEditingInspection(false); } }}>
+          <DrawerPopup variant="inset" className="max-w-sm">
+            <DrawerHeader className="border-b pb-3">
+              <div className="flex items-center justify-between">
+                <DrawerTitle className="flex items-center gap-2 text-base">
+                  <ClipboardIcon className="h-4 w-4 text-muted-foreground" />
+                  Datos de ingreso
+                </DrawerTitle>
+                <DrawerClose render={
+                  <button className="p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground rounded-md transition-colors">
+                    <Cancel01Icon className="h-4 w-4" />
+                  </button>
+                } />
+              </div>
+            </DrawerHeader>
+            <DrawerPanel className="overflow-y-auto p-4 space-y-6 !pt-4">
+
+              {/* Motivos */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Note01Icon className="h-3.5 w-3.5" /> Motivos de ingreso
+                  </p>
+                  {order.status !== "Cancelada" && !isAddingSymptom && (
+                    <button
+                      onClick={() => setIsAddingSymptom(true)}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <PlusSignIcon className="h-3.5 w-3.5" /> Añadir
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {(order.symptoms || order.issue) ? (
+                    (order.symptoms || order.issue)!.split('\n').map((s, i) => {
+                      const text = s.trim();
+                      if (!text) return null;
+                      const clean = text.startsWith('-') ? text.slice(1).trim() : text;
+                      const checked = (order.symptomsChecked ?? []).includes(i);
+                      return (
+                        <div
+                          key={i}
+                          className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${checked ? "bg-muted/60 border-muted" : "bg-muted/30"}`}
+                        >
+                          <button
+                            onClick={async () => {
+                              const current = order.symptomsChecked ?? [];
+                              const next = checked ? current.filter(n => n !== i) : [...current, i];
+                              await updateSymptomsChecked({ id: order._id, symptomsChecked: next });
+                            }}
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                              checked
+                                ? "border-emerald-500 bg-emerald-500 text-white"
+                                : "border-muted-foreground/40 hover:border-emerald-400"
+                            }`}
+                          >
+                            {checked && (
+                              <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+                          <span className={`leading-snug flex-1 ${checked ? "line-through text-muted-foreground" : ""}`}>
+                            {clean}
+                          </span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-lg border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
+                      Sin motivos registrados.
+                    </div>
+                  )}
+                </div>
+
+                {order.status !== "Cancelada" && (
+                  isAddingSymptom ? (
+                    <div className="flex gap-2 items-center mt-3">
+                      <Input
+                        value={newSymptomText}
+                        onChange={(e) => setNewSymptomText(e.target.value)}
+                        placeholder="Escribe el motivo..."
+                        className="h-8 text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); handleAddSymptom(); }
+                          if (e.key === 'Escape') { setIsAddingSymptom(false); setNewSymptomText(""); }
+                        }}
+                        autoFocus
+                      />
+                      <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => { setIsAddingSymptom(false); setNewSymptomText(""); }}>
+                        <Cancel01Icon className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" className="h-8 shrink-0" onClick={handleAddSymptom}>OK</Button>
+                    </div>
+                  ) : null
+                )}
+              </div>
+
+              {/* Inspección */}
+              <div className="border-t pt-5">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <NoteEditIcon className="h-3.5 w-3.5" /> Inspección inicial
+                  </p>
+                  {order.status !== "Cancelada" && !isEditingInspection && (
+                    <button
+                      onClick={() => { setInspectionText(order.inspection || ""); setIsEditingInspection(true); }}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <PencilEdit01Icon className="h-3.5 w-3.5" /> Editar
+                    </button>
+                  )}
+                </div>
+
+                {isEditingInspection ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={inspectionText}
+                      onChange={(e) => setInspectionText(e.target.value)}
+                      placeholder="Describe la inspección inicial del vehículo..."
+                      rows={5}
+                      className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => setIsEditingInspection(false)}>
+                        Cancelar
+                      </Button>
+                      <Button size="sm" className="gap-1.5" onClick={async () => {
+                        try {
+                          await updateInspection({ id: order._id, inspection: inspectionText.trim() });
+                          toastManager.add({ type: "success", title: "Inspección guardada" });
+                          setIsEditingInspection(false);
+                        } catch {
+                          toastManager.add({ type: "error", title: "Error", description: "No se pudo guardar la inspección." });
+                        }
+                      }}>
+                        <FloppyDiskIcon className="h-3.5 w-3.5" /> Guardar
+                      </Button>
+                    </div>
+                  </div>
+                ) : order.inspection ? (
+                  <div className="rounded-lg border bg-muted/30 px-3 py-3 text-sm leading-relaxed whitespace-pre-line">
+                    {order.inspection}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
+                    Sin inspección registrada.{" "}
+                    {order.status !== "Cancelada" && (
+                      <button onClick={() => { setInspectionText(""); setIsEditingInspection(true); }} className="underline hover:text-foreground transition-colors">Añadir</button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+            </DrawerPanel>
+          </DrawerPopup>
+        </Drawer>
+
         <OrderAddItemDrawer
           entityId={order._id}
           entityType="order"

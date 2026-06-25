@@ -322,7 +322,7 @@ export function VehiculoForm({ vehicle, trigger, open: openProp, onOpenChange }:
                         if (!orgId) throw new Error("Org ID required");
                         const id = await createClient({
                           orgId,
-                          type: "Cliente",
+                          roles: ["Cliente"],
                           name: newClientData.name,
                           email: newClientData.email,
                           phone: newClientData.phone || undefined,

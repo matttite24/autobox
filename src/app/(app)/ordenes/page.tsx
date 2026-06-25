@@ -12,6 +12,16 @@ import { OrdenForm } from "@/components/ordenes/orden-form";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type Doc, Id } from "@convex/_generated/dataModel";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -35,7 +45,8 @@ import { OrderDetailsDrawer } from "@/components/ordenes/order-details-drawer";
 import { SearchFilterBar } from "@/components/search-filter-bar";
 import { useNewShortcut } from "@/hooks/use-new-shortcut";
 import { useDebounce } from "@/hooks/use-debounce";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+
+
 
 type WorkOrderDoc = Doc<"work_orders">;
 
@@ -99,6 +110,7 @@ function OrdenesPage() {
   const orders = useQuery(api.work_orders.get, orgId ? { orgId } : "skip") as WorkOrderView[] | undefined;
   const settings = useQuery(api.organizations.settings, orgId ? { orgId } : "skip");
   const updateStatus = useMutation(api.work_orders.updateStatus);
+  const workers = useQuery(api.clients.get, orgId ? { orgId, type: "Trabajador" } : "skip");
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm);
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
@@ -109,6 +121,8 @@ function OrdenesPage() {
   const [deliveryConfirmOrderId, setDeliveryConfirmOrderId] = useState<Id<"work_orders"> | null>(null);
   const [closeConfirmOrderId, setCloseConfirmOrderId] = useState<Id<"work_orders"> | null>(null);
   const [startRepairOrderId, setStartRepairOrderId] = useState<Id<"work_orders"> | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>("");
+  const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     const isNew = searchParams.get("new") === "1";
@@ -125,6 +139,8 @@ function OrdenesPage() {
 
   const handleAdvance = async (orderId: Id<"work_orders">, currentStatus: string) => {
     if (currentStatus === "Pendiente") {
+      setSelectedWorkerId("");
+      setEstimatedDeliveryDate(undefined);
       setStartRepairOrderId(orderId);
       return;
     }
@@ -141,7 +157,12 @@ function OrdenesPage() {
   const confirmStartRepair = async () => {
     if (!startRepairOrderId) return;
     try {
-      await updateStatus({ id: startRepairOrderId, status: "En Progreso" });
+      await updateStatus({
+        id: startRepairOrderId,
+        status: "En Progreso",
+        assignedWorkerId: selectedWorkerId ? selectedWorkerId as Id<"clients"> : undefined,
+        estimatedDeliveryDate: estimatedDeliveryDate ? estimatedDeliveryDate.getTime() : undefined,
+      });
     } catch (e: unknown) {
       const msg = e instanceof ConvexError
         ? String(e.data)
@@ -149,6 +170,8 @@ function OrdenesPage() {
       toastManager.add({ type: "error", title: "Stock insuficiente", description: msg });
     } finally {
       setStartRepairOrderId(null);
+      setSelectedWorkerId("");
+      setEstimatedDeliveryDate(undefined);
     }
   };
 
@@ -359,7 +382,14 @@ function OrdenesPage() {
 
                                     <CardDescription className="col-span-2 text-xs line-clamp-2 leading-relaxed flex items-start gap-1.5">
                                       <Alert01Icon className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/70" />
-                                      {order.symptoms || order.issue}
+                                      {(() => {
+                                        const raw = order.symptoms || order.issue || "";
+                                        const checked = order.symptomsChecked ?? [];
+                                        const lines = raw.split('\n').filter(s => s.trim());
+                                        const pending = lines.filter((s, i) => !checked.includes(i));
+                                        if (lines.length > 0 && pending.length === 0) return "✓ Todos los motivos completados";
+                                        return pending.map(s => s.startsWith('-') ? s.slice(1).trim() : s.trim()).join(', ') || "—";
+                                      })()}
                                     </CardDescription>
                                   </CardHeader>
 
@@ -486,7 +516,7 @@ function OrdenesPage() {
                                               handleAdvance(order._id, order.status);
                                             }}
                                           >
-                                            Avanzar a {nextStatus.label} →
+                                            {order.status === "Pendiente" ? "Empezar Reparación →" : `Avanzar a ${nextStatus.label} →`}
                                           </Button>
                                         ) : null}
                                       </div>
@@ -509,7 +539,7 @@ function OrdenesPage() {
       </main>
 
       {/* Alert: confirmar inicio de reparación */}
-      <AlertDialog open={!!startRepairOrderId} onOpenChange={(open) => { if (!open) setStartRepairOrderId(null); }}>
+      <AlertDialog open={!!startRepairOrderId} onOpenChange={(open) => { if (!open) { setStartRepairOrderId(null); setSelectedWorkerId(""); setEstimatedDeliveryDate(undefined); } }}>
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Iniciar reparación?</AlertDialogTitle>
@@ -519,6 +549,62 @@ function OrdenesPage() {
               sin anular la orden.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div className="px-6 pb-4 space-y-4">
+            {/* Selector de técnico asignado */}
+            <div className="space-y-1.5">
+              <Label htmlFor="worker-select" className="text-sm font-medium">
+                Técnico asignado <span className="text-muted-foreground font-normal">(opcional)</span>
+              </Label>
+              <select
+                id="worker-select"
+                value={selectedWorkerId}
+                onChange={(e) => setSelectedWorkerId(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Sin asignar</option>
+                {workers?.map((w) => (
+                  <option key={w._id} value={w._id}>
+                    {w.name}{w.jobTitle ? ` — ${w.jobTitle}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Fecha estimada de entrega */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">
+                Fecha estimada de entrega <span className="text-muted-foreground font-normal">(opcional)</span>
+              </Label>
+              <Popover>
+                <PopoverTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <span className={estimatedDeliveryDate ? "" : "text-muted-foreground"}>
+                        {estimatedDeliveryDate
+                          ? estimatedDeliveryDate.toLocaleDateString("es-EC", { day: "2-digit", month: "long", year: "numeric" })
+                          : "Seleccionar fecha"}
+                      </span>
+                    </Button>
+                  }
+                />
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={estimatedDeliveryDate}
+                    onSelect={setEstimatedDeliveryDate}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    captionLayout="dropdown"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
           <AlertDialogFooter>
             <AlertDialogClose render={<Button variant="ghost" type="button">Cancelar</Button>} />
             <AlertDialogClose

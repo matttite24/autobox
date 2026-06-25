@@ -468,7 +468,7 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
                           if (!orgId) throw new Error("Org ID is required");
                           const id = await createClient({
                             orgId,
-                            type: "Cliente",
+                            roles: ["Cliente"],
                             name: newClientData.name,
                             email: newClientData.email,
                             phone: newClientData.phone || undefined,
@@ -505,7 +505,7 @@ export function OrdenForm({ trigger, open: externalOpen, onOpenChange: externalO
                         if (!orgId) throw new Error("Org ID is required");
                         const id = await createClient({
                           orgId,
-                          type: "Cliente",
+                          roles: ["Cliente"],
                           name: newClientData.name,
                           email: newClientData.email,
                           phone: newClientData.phone || undefined,

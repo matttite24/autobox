@@ -79,17 +79,14 @@ export default function InicioPage() {
           </div>
         </section>
 
-        <section
-          className="animate-in fade-in slide-in-from-bottom-4 duration-700"
-          style={{ animationFillMode: "both", animationDelay: "100ms" }}
-        >
+        <section>
           <OnboardingChecklist />
         </section>
 
         <section className="grid gap-6 grid-cols-1 md:grid-cols-2 items-stretch">
           <div
-            className="w-full animate-in fade-in slide-in-from-bottom-6 duration-700"
-            style={{ animationFillMode: "both", animationDelay: "150ms" }}
+            className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+            style={{ animationFillMode: "both", animationDelay: "160ms" }}
           >
             <DailyCashWidget />
           </div>
@@ -101,8 +98,8 @@ export default function InicioPage() {
                 <Link
                   key={action.label}
                   href={action.href}
-                  className="group flex flex-1 items-center gap-3 rounded-[1.25rem] border border-border/60 bg-card px-4 py-3 transition-all duration-150 hover:border-primary/30 hover:shadow-sm animate-in fade-in slide-in-from-right-4 duration-700"
-                  style={{ animationFillMode: "both", animationDelay: `${300 + index * 100}ms` }}
+                  className="group flex flex-1 items-center gap-3 rounded-[1.25rem] border border-border/60 bg-card px-4 py-3 transition-all duration-150 hover:border-primary/30 hover:shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-700"
+                  style={{ animationFillMode: "both", animationDelay: `${160 + index * 80}ms` }}
                 >
                   <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-gradient-to-br ${action.tone} text-foreground`}>
                     <Icon className="size-5" />
@@ -117,8 +114,8 @@ export default function InicioPage() {
           </div>
         </section>
         <section
-          className="animate-in fade-in slide-in-from-bottom-6 duration-700"
-          style={{ animationFillMode: "both", animationDelay: "600ms" }}
+          className="animate-in fade-in slide-in-from-bottom-4 duration-700"
+          style={{ animationFillMode: "both", animationDelay: "400ms" }}
         >
           <RevenueChartWidget />
         </section>

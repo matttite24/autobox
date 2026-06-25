@@ -89,7 +89,7 @@ export function OnboardingChecklist() {
   const progress = Math.round((completed / total) * 100);
 
   return (
-    <div className="rounded-2xl border bg-card overflow-hidden">
+    <div className="rounded-2xl border bg-card overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationFillMode: "both" }}>
       {/* Header */}
       <div className="px-5 pt-5 pb-4 border-b">
         <div className="flex items-start justify-between gap-3">

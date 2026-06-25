@@ -86,12 +86,19 @@ export const get = query({
           vehicle = await ctx.db.get(order.vehicleId);
         }
 
+        let assignedWorkerData = null;
+        if (order.assignedWorkerId) {
+          const w = await ctx.db.get(order.assignedWorkerId);
+          if (w) assignedWorkerData = { name: w.name, jobTitle: w.jobTitle };
+        }
+
         return {
           ...order,
           clientName: client?.name || "Cliente Desconocido",
           clientPhone: client?.phone,
           clientData: client,
           vehicleData: vehicle,
+          assignedWorkerData,
         };
       })
     );
@@ -128,12 +135,19 @@ export const getActive = query({
           vehicle = await ctx.db.get(order.vehicleId);
         }
 
+        let assignedWorkerData = null;
+        if (order.assignedWorkerId) {
+          const w = await ctx.db.get(order.assignedWorkerId);
+          if (w) assignedWorkerData = { name: w.name, jobTitle: w.jobTitle };
+        }
+
         return {
           ...order,
           clientName: client?.name || "Cliente Desconocido",
           clientPhone: client?.phone,
           clientData: client,
           vehicleData: vehicle,
+          assignedWorkerData,
         };
       })
     );
@@ -151,11 +165,18 @@ export const getById = query({
     const client = await ctx.db.get(order.clientId);
     const vehicle = order.vehicleId ? await ctx.db.get(order.vehicleId) : null;
 
+    let assignedWorkerData = null;
+    if (order.assignedWorkerId) {
+      const w = await ctx.db.get(order.assignedWorkerId);
+      if (w) assignedWorkerData = { name: w.name, jobTitle: w.jobTitle };
+    }
+
     return {
       ...order,
       clientName: client?.name || "Cliente Desconocido",
       clientData: client,
       vehicleData: vehicle,
+      assignedWorkerData,
     };
   },
 });
@@ -249,6 +270,8 @@ export const updateStatus = mutation({
       v.literal("Completada"),
       v.literal("Cancelada")
     ),
+    assignedWorkerId: v.optional(v.id("clients")),
+    estimatedDeliveryDate: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { doc: order } = await requireDocAccess(ctx, "work_orders", args.id);
@@ -265,7 +288,26 @@ export const updateStatus = mutation({
       await applyStockDelta(ctx, items, []);
     }
 
-    return await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() });
+    const patch: Record<string, any> = { status: args.status, updatedAt: Date.now() };
+    if (args.assignedWorkerId !== undefined) patch.assignedWorkerId = args.assignedWorkerId;
+    if (args.estimatedDeliveryDate !== undefined) patch.estimatedDeliveryDate = args.estimatedDeliveryDate;
+
+    return await ctx.db.patch(args.id, patch);
+  },
+});
+
+export const assignWorker = mutation({
+  args: {
+    id: v.id("work_orders"),
+    assignedWorkerId: v.optional(v.id("clients")),
+    estimatedDeliveryDate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireDocAccess(ctx, "work_orders", args.id);
+    const patch: Record<string, any> = { updatedAt: Date.now() };
+    if (args.assignedWorkerId !== undefined) patch.assignedWorkerId = args.assignedWorkerId;
+    if (args.estimatedDeliveryDate !== undefined) patch.estimatedDeliveryDate = args.estimatedDeliveryDate;
+    return await ctx.db.patch(args.id, patch);
   },
 });
 
@@ -306,6 +348,31 @@ export const updateSymptoms = mutation({
     await requireDocAccess(ctx, "work_orders", args.id);
     return await ctx.db.patch(args.id, {
       symptoms: args.symptoms,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updateSymptomsChecked = mutation({
+  args: {
+    id: v.id("work_orders"),
+    symptomsChecked: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireDocAccess(ctx, "work_orders", args.id);
+    return await ctx.db.patch(args.id, { symptomsChecked: args.symptomsChecked });
+  },
+});
+
+export const updateInspection = mutation({
+  args: {
+    id: v.id("work_orders"),
+    inspection: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireDocAccess(ctx, "work_orders", args.id);
+    return await ctx.db.patch(args.id, {
+      inspection: args.inspection,
       updatedAt: Date.now(),
     });
   },

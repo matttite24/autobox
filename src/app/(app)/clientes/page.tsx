@@ -149,15 +149,14 @@ export default function ClientesPage() {
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
                   onClick={() => setSelectedClient(client)}
                 >
-                  <TableCell>{client.type || "Cliente"}</TableCell>
+                  <TableCell>{(client.roles && client.roles.length > 0 ? client.roles : [client.type || "Cliente"]).join(", ")}</TableCell>
                   <TableCell className="font-medium">{client.name}</TableCell>
                   <TableCell>{client.email}</TableCell>
                   <TableCell>{client.phone || "-"}</TableCell>
                   <TableCell>{client.company || "-"}</TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <ClienteForm 
-                      client={client} 
-                      fixedType={client.type || "Cliente"}
+                    <ClienteForm
+                      client={client}
                       trigger={
                         <Button variant="ghost" size="icon" title="Editar">
                           <PencilEdit01Icon className="size-4 text-muted-foreground" />

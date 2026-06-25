@@ -19,6 +19,7 @@ type RelationResult = {
     phone?: string;
     company?: string;
     type?: string;
+    roles?: string[];
   } | null;
   relatedOrders: Array<{ _id: string; number?: number; status: string; clientId: string }>;
   relatedSales: Array<{ _id: string; number?: number; status: string; clientName: string; clientId?: string }>;
@@ -96,7 +97,9 @@ export default function DiagnosticoPage() {
                     <p className="text-sm text-muted-foreground">{clientLabel}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">{result.client.type || "Cliente"}</Badge>
+                    {(result.client.roles && result.client.roles.length > 0 ? result.client.roles : [result.client.type || "Cliente"]).map((r: string) => (
+                      <Badge key={r} variant="secondary">{r}</Badge>
+                    ))}
                     {result.client.phone ? <Badge variant="secondary">{result.client.phone}</Badge> : null}
                     {result.client.email ? <Badge variant="secondary">{result.client.email}</Badge> : null}
                     {result.client.company ? <Badge variant="secondary">{result.client.company}</Badge> : null}

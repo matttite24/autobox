@@ -2,8 +2,20 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireOrgAccess, requireDocAccess } from "./access";
 
+type ClientRole = "Cliente" | "Proveedor" | "Trabajador";
+
 function normalizeText(value: string | number | null | undefined) {
   return value === null || value === undefined ? "" : value.toString().trim();
+}
+
+/** Returns effective roles for a client, supporting legacy `type` field. */
+function effectiveRoles(client: { type?: ClientRole; roles?: ClientRole[] }): ClientRole[] {
+  if (client.roles && client.roles.length > 0) return client.roles;
+  return [client.type ?? "Cliente"];
+}
+
+function hasRole(client: { type?: ClientRole; roles?: ClientRole[] }, role: ClientRole) {
+  return effectiveRoles(client).includes(role);
 }
 
 export const get = query({
@@ -17,37 +29,28 @@ export const get = query({
   },
   handler: async (ctx, args) => {
     await requireOrgAccess(ctx, args.orgId);
-    if (args.type === "Trabajador" || args.type === "Proveedor") {
-      return await ctx.db
-        .query("clients")
-        .withIndex("by_org_and_type", (q) => q.eq("orgId", args.orgId).eq("type", args.type!))
-        .order("desc")
-        .collect();
-    }
-
-    let clients = await ctx.db
+    const clients = await ctx.db
       .query("clients")
       .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
       .order("desc")
       .collect();
 
     if (args.type) {
-      clients = clients.filter((client) => (client.type || "Cliente") === args.type);
+      return clients.filter((c) => hasRole(c, args.type!));
     }
-
     return clients;
   },
 });
 
 export const search = query({
-  args: { 
+  args: {
     orgId: v.id("organizations"),
     type: v.optional(v.union(
       v.literal("Cliente"),
       v.literal("Proveedor"),
       v.literal("Trabajador")
     )),
-    query: v.string() 
+    query: v.string()
   },
   handler: async (ctx, args) => {
     await requireOrgAccess(ctx, args.orgId);
@@ -58,7 +61,7 @@ export const search = query({
 
     const searchTerm = args.query.toLowerCase();
     return clients.filter((c) => {
-      const matchesType = !args.type || (c.type || "Cliente") === args.type;
+      const matchesType = !args.type || hasRole(c, args.type);
       const matchesText =
         c.name.toLowerCase().includes(searchTerm) ||
         normalizeText(c.documentId).toLowerCase().includes(searchTerm) ||
@@ -74,11 +77,11 @@ export const search = query({
 export const create = mutation({
   args: {
     orgId: v.id("organizations"),
-    type: v.union(
+    roles: v.array(v.union(
       v.literal("Cliente"),
       v.literal("Proveedor"),
       v.literal("Trabajador")
-    ),
+    )),
     name: v.string(),
     documentId: v.optional(v.string()),
     email: v.string(),
@@ -92,31 +95,34 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     await requireOrgAccess(ctx, args.orgId);
+    const isTrabajador = args.roles.includes("Trabajador");
     const normalized = {
       orgId: args.orgId,
-      type: args.type,
+      roles: args.roles,
       name: args.name.trim(),
       documentId: normalizeText(args.documentId) || undefined,
       email: args.email.trim(),
       phone: normalizeText(args.phone) || undefined,
       company: normalizeText(args.company) || undefined,
-      baseSalary: args.type === "Trabajador" ? args.baseSalary ?? 0 : undefined,
-      employmentStatus: args.type === "Trabajador" ? args.employmentStatus ?? "Activo" : undefined,
-      hireDate: args.type === "Trabajador" ? args.hireDate : undefined,
-      jobTitle: args.type === "Trabajador" ? normalizeText(args.jobTitle) || undefined : undefined,
-      employmentNotes: args.type === "Trabajador" ? normalizeText(args.employmentNotes) || undefined : undefined,
+      baseSalary: isTrabajador ? args.baseSalary ?? 0 : undefined,
+      employmentStatus: isTrabajador ? args.employmentStatus ?? "Activo" : undefined,
+      hireDate: isTrabajador ? args.hireDate : undefined,
+      jobTitle: isTrabajador ? normalizeText(args.jobTitle) || undefined : undefined,
+      employmentNotes: isTrabajador ? normalizeText(args.employmentNotes) || undefined : undefined,
     };
 
-    return await ctx.db.insert("clients", {
-      ...normalized,
-    });
+    return await ctx.db.insert("clients", normalized);
   },
 });
 
 export const update = mutation({
   args: {
     id: v.id("clients"),
-    type: v.optional(v.union(v.literal("Cliente"), v.literal("Proveedor"), v.literal("Trabajador"))),
+    roles: v.optional(v.array(v.union(
+      v.literal("Cliente"),
+      v.literal("Proveedor"),
+      v.literal("Trabajador")
+    ))),
     name: v.optional(v.string()),
     documentId: v.optional(v.string()),
     email: v.optional(v.string()),
@@ -131,7 +137,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     await requireDocAccess(ctx, "clients", args.id);
     const { id, ...data } = args;
-    const nextType = data.type;
+    const isTrabajador = data.roles ? data.roles.includes("Trabajador") : undefined;
     return await ctx.db.patch(id, {
       ...data,
       name: data.name?.trim(),
@@ -139,8 +145,8 @@ export const update = mutation({
       email: data.email?.trim(),
       phone: data.phone ? normalizeText(data.phone) : data.phone,
       company: data.company ? normalizeText(data.company) : data.company,
-      baseSalary: nextType === "Trabajador" ? data.baseSalary ?? 0 : data.baseSalary,
-      employmentStatus: nextType === "Trabajador" ? data.employmentStatus ?? "Activo" : data.employmentStatus,
+      baseSalary: isTrabajador ? data.baseSalary ?? 0 : data.baseSalary,
+      employmentStatus: isTrabajador ? data.employmentStatus ?? "Activo" : data.employmentStatus,
       jobTitle: data.jobTitle ? normalizeText(data.jobTitle) : data.jobTitle,
       employmentNotes: data.employmentNotes ? normalizeText(data.employmentNotes) : data.employmentNotes,
     });
@@ -152,7 +158,9 @@ export const bulkCreate = mutation({
     orgId: v.id("organizations"),
     items: v.array(
       v.object({
-        type: v.union(v.literal("Cliente"), v.literal("Proveedor"), v.literal("Trabajador")),
+        roles: v.optional(v.array(v.union(v.literal("Cliente"), v.literal("Proveedor"), v.literal("Trabajador")))),
+        // legacy support
+        type: v.optional(v.union(v.literal("Cliente"), v.literal("Proveedor"), v.literal("Trabajador"))),
         name: v.string(),
         documentId: v.optional(v.string()),
         email: v.optional(v.string()),
@@ -168,7 +176,6 @@ export const bulkCreate = mutation({
     let skipped = 0;
 
     for (const item of args.items) {
-      // Omitir duplicados por documentId si existe
       if (item.documentId) {
         const existing = await ctx.db
           .query("clients")
@@ -180,15 +187,18 @@ export const bulkCreate = mutation({
         if (dup) { skipped++; continue; }
       }
 
+      const roles: ClientRole[] = item.roles ?? (item.type ? [item.type] : ["Cliente"]);
+      const isTrabajador = roles.includes("Trabajador");
+
       await ctx.db.insert("clients", {
         orgId: args.orgId,
-        type: item.type,
+        roles,
         name: item.name.trim(),
         documentId: item.documentId?.trim() || undefined,
         email: item.email?.trim() || "",
         phone: item.phone?.trim() || undefined,
         company: item.company?.trim() || undefined,
-        ...(item.type === "Trabajador" ? { employmentStatus: "Activo" as const, baseSalary: 0 } : {}),
+        ...(isTrabajador ? { employmentStatus: "Activo" as const, baseSalary: 0 } : {}),
       });
       created++;
     }
@@ -215,7 +225,10 @@ export const normalizeExistingClients = mutation({
       const nextCompany = normalizeText(client.company) || undefined;
       const nextName = client.name.trim();
       const nextEmail = client.email.trim();
-      const nextType = client.type || "Cliente";
+      // Migrate legacy type to roles if needed
+      const nextRoles: ClientRole[] = client.roles && client.roles.length > 0
+        ? client.roles
+        : [client.type ?? "Cliente"];
 
       const needsUpdate =
         client.documentId !== nextDocumentId ||
@@ -223,7 +236,7 @@ export const normalizeExistingClients = mutation({
         client.company !== nextCompany ||
         client.name !== nextName ||
         client.email !== nextEmail ||
-        client.type !== nextType;
+        !client.roles;
 
       if (!needsUpdate) continue;
 
@@ -233,11 +246,59 @@ export const normalizeExistingClients = mutation({
         documentId: nextDocumentId,
         phone: nextPhone,
         company: nextCompany,
-        type: nextType,
+        roles: nextRoles,
       });
       updated += 1;
     }
 
     return { scanned: clients.length, updated };
   },
+});
+
+export const remove = mutation({
+  args: {
+    id: v.id("clients"),
+  },
+  handler: async (ctx, args) => {
+    const { doc, access } = await requireDocAccess(ctx, "clients", args.id);
+    const orgId = access.membership.orgId;
+
+    const roles = effectiveRoles(doc);
+    const isTrabajador = roles.includes("Trabajador");
+    const isProveedor = roles.includes("Proveedor");
+    const isCliente = roles.includes("Cliente");
+
+    if (isTrabajador) {
+      const payrolls = await ctx.db.query("payroll_payments").withIndex("by_workerId", q => q.eq("workerId", args.id)).first();
+      if (payrolls) throw new Error("No se puede eliminar porque tiene pagos de nómina asociados.");
+
+      const advances = await ctx.db.query("salary_advances").withIndex("by_workerId", q => q.eq("workerId", args.id)).first();
+      if (advances) throw new Error("No se puede eliminar porque tiene anticipos de sueldo asociados.");
+
+      const finance = await ctx.db.query("finance_transactions").withIndex("by_org_and_confirmedAt", q => q.eq("orgId", orgId)).filter(q => q.eq(q.field("workerId"), args.id)).first();
+      if (finance) throw new Error("No se puede eliminar porque tiene transacciones financieras asociadas.");
+    }
+
+    if (isCliente) {
+      const vehicles = await ctx.db.query("vehicles").withIndex("by_client", q => q.eq("clientId", args.id)).first();
+      if (vehicles) throw new Error("No se puede eliminar porque tiene vehículos registrados.");
+
+      const workOrders = await ctx.db.query("work_orders").withIndex("by_client", q => q.eq("clientId", args.id)).first();
+      if (workOrders) throw new Error("No se puede eliminar porque tiene órdenes de trabajo asociadas.");
+
+      const sales = await ctx.db.query("sales").withIndex("by_client", q => q.eq("clientId", args.id)).first();
+      if (sales) throw new Error("No se puede eliminar porque tiene ventas asociadas.");
+    }
+
+    if (isProveedor) {
+      const purchases = await ctx.db.query("purchases").withIndex("by_supplier", q => q.eq("supplierId", args.id)).first();
+      if (purchases) throw new Error("No se puede eliminar porque tiene compras asociadas.");
+
+      const items = await ctx.db.query("inventory").withIndex("by_org", q => q.eq("orgId", orgId)).collect();
+      const hasInventory = items.some(i => i.supplierIds?.includes(args.id));
+      if (hasInventory) throw new Error("No se puede eliminar porque está asociado a productos en el inventario.");
+    }
+
+    await ctx.db.delete(args.id);
+  }
 });
