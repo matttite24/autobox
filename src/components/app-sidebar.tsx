@@ -24,6 +24,12 @@ import {
   TooltipTrigger,
   TooltipPopup,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuPopup,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
   Settings01Icon,
@@ -293,89 +299,153 @@ function AppSidebarContent({ pathname }: { pathname: string }) {
 
               {/* Finanzas */}
               <SidebarMenuItem>
-                {renderButton(
+                {!isCollapsed ? (
                   <>
-                    <AddMoneyCircleIcon
-                      className={cn(
-                        "size-5 shrink-0 transition-colors",
-                        openCashSession ? "text-emerald-500" : ""
-                      )}
-                      strokeWidth={1.75}
-                    />
-                    <span className="transition-[max-width,opacity] duration-200 ease-in-out whitespace-nowrap overflow-hidden max-w-40 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0">
-                      Finanzas
-                    </span>
-                    <ArrowDown01Icon
-                      strokeWidth={1.75}
-                      className={cn(
-                        "ml-auto size-4 shrink-0 transition-all duration-200",
-                        finanzasOpen && "rotate-180",
-                        "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0"
-                      )}
-                    />
-                  </>,
-                  "Finanzas",
-                  isFinanzasActive,
-                  () => !isCollapsed && setFinanzasOpen((o) => !o)
-                )}
-                {finanzasOpen && !isCollapsed && (
-                  <SidebarMenuSub>
-                    {FINANZAS_SUB.map((sub) => (
-                      <SidebarMenuSubItem key={sub.title}>
-                        <SidebarMenuSubButton
-                          render={<Link href={sub.url} />}
-                          isActive={pathname === sub.url}
-                        >
-                          <span>{sub.title}</span>
-                          {sub.title === "Movimientos" && openCashSession && (
-                            <span className="ml-auto size-2 rounded-full bg-emerald-500 shrink-0" />
+                    {renderButton(
+                      <>
+                        <AddMoneyCircleIcon
+                          className={cn(
+                            "size-5 shrink-0 transition-colors",
+                            openCashSession ? "text-emerald-500" : ""
                           )}
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
+                          strokeWidth={1.75}
+                        />
+                        <span className="transition-[max-width,opacity] duration-200 ease-in-out whitespace-nowrap overflow-hidden max-w-40 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0">
+                          Finanzas
+                        </span>
+                        <ArrowDown01Icon
+                          strokeWidth={1.75}
+                          className={cn(
+                            "ml-auto size-4 shrink-0 transition-all duration-200",
+                            finanzasOpen && "rotate-180",
+                            "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0"
+                          )}
+                        />
+                      </>,
+                      "Finanzas",
+                      isFinanzasActive,
+                      () => setFinanzasOpen((o) => !o)
+                    )}
+                    {finanzasOpen && (
+                      <SidebarMenuSub>
+                        {FINANZAS_SUB.map((sub) => (
+                          <SidebarMenuSubItem key={sub.title}>
+                            <SidebarMenuSubButton
+                              render={<Link href={sub.url} />}
+                              isActive={pathname === sub.url}
+                            >
+                              <span>{sub.title}</span>
+                              {sub.title === "Movimientos" && openCashSession && (
+                                <span className="ml-auto size-2 rounded-full bg-emerald-500 shrink-0" />
+                              )}
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
+                  </>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <button type="button" className={getButtonClass(isFinanzasActive)}>
+                          <AddMoneyCircleIcon
+                            className={cn(
+                              "size-5 shrink-0 transition-colors",
+                              openCashSession ? "text-emerald-500" : ""
+                            )}
+                            strokeWidth={1.75}
+                          />
+                        </button>
+                      }
+                    />
+                    <DropdownMenuPopup align="start" side="right" sideOffset={14} className="min-w-48 py-1.5">
+                      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Finanzas
+                      </div>
+                      {FINANZAS_SUB.map((sub) => (
+                        <DropdownMenuItem
+                          key={sub.title}
+                          render={<Link href={sub.url} />}
+                          className={cn(pathname === sub.url && "bg-accent text-accent-foreground")}
+                        >
+                          <span className="flex-1">{sub.title}</span>
+                          {sub.title === "Movimientos" && openCashSession && (
+                            <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuPopup>
+                  </DropdownMenu>
                 )}
               </SidebarMenuItem>
 
               {/* Ajustes */}
               <SidebarMenuItem>
-                {renderButton(
+                {!isCollapsed ? (
                   <>
-                    <Settings01Icon className="size-5 shrink-0" strokeWidth={1.75} />
-                    <span className="transition-[max-width,opacity] duration-200 ease-in-out whitespace-nowrap overflow-hidden max-w-40 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0">
-                      Ajustes
-                    </span>
-                    <ArrowDown01Icon
-                      strokeWidth={1.75}
-                      className={cn(
-                        "ml-auto size-4 shrink-0 transition-all duration-200",
-                        settingsOpen && "rotate-180",
-                        "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0"
-                      )}
+                    {renderButton(
+                      <>
+                        <Settings01Icon className="size-5 shrink-0" strokeWidth={1.75} />
+                        <span className="transition-[max-width,opacity] duration-200 ease-in-out whitespace-nowrap overflow-hidden max-w-40 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0">
+                          Ajustes
+                        </span>
+                        <ArrowDown01Icon
+                          strokeWidth={1.75}
+                          className={cn(
+                            "ml-auto size-4 shrink-0 transition-all duration-200",
+                            settingsOpen && "rotate-180",
+                            "group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0"
+                          )}
+                        />
+                      </>,
+                      "Ajustes",
+                      isSettingsActive,
+                      () => {
+                        const opening = !settingsOpen;
+                        setSettingsOpen(opening);
+                        if (opening) router.push("/ajustes");
+                      }
+                    )}
+                    {settingsOpen && (
+                      <SidebarMenuSub>
+                        {SETTINGS_SECTIONS.map((item) => (
+                          <SidebarMenuSubItem key={item.title}>
+                            <SidebarMenuSubButton
+                              render={<Link href={item.url} />}
+                              isActive={isSettingsSectionActive(item.url)}
+                            >
+                              {item.title}
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
+                  </>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <button type="button" className={getButtonClass(isSettingsActive)}>
+                          <Settings01Icon className="size-5 shrink-0" strokeWidth={1.75} />
+                        </button>
+                      }
                     />
-                  </>,
-                  "Ajustes",
-                  isSettingsActive,
-                  () => {
-                    if (isCollapsed) return;
-                    const opening = !settingsOpen;
-                    setSettingsOpen(opening);
-                    if (opening) router.push("/ajustes");
-                  }
-                )}
-                {settingsOpen && !isCollapsed && (
-                  <SidebarMenuSub>
-                    {SETTINGS_SECTIONS.map((item) => (
-                      <SidebarMenuSubItem key={item.title}>
-                        <SidebarMenuSubButton
+                    <DropdownMenuPopup align="start" side="right" sideOffset={14} className="min-w-48 py-1.5">
+                      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                        Ajustes
+                      </div>
+                      {SETTINGS_SECTIONS.map((item) => (
+                        <DropdownMenuItem
+                          key={item.title}
                           render={<Link href={item.url} />}
-                          isActive={isSettingsSectionActive(item.url)}
+                          className={cn(isSettingsSectionActive(item.url) && "bg-accent text-accent-foreground")}
                         >
                           {item.title}
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuPopup>
+                  </DropdownMenu>
                 )}
               </SidebarMenuItem>
 

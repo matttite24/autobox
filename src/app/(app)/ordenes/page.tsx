@@ -354,7 +354,10 @@ function OrdenesPage() {
                             order={order}
                             initialOpen={initialOpenOrderId === order._id}
                             trigger={
-                              <div className="w-full text-left appearance-none focus:outline-none cursor-pointer">
+                              <div
+                                className="w-full text-left appearance-none focus:outline-none cursor-pointer animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                                style={{ animationDuration: "300ms", animationDelay: `${Math.min(columnOrders.indexOf(order) * 40, 300)}ms` }}
+                              >
                                 <Card className="shadow-sm hover:border-primary/40 hover:shadow-md transition-all duration-150">
                                   {/* Header: vehículo + placa + síntoma */}
                                   <CardHeader className="pb-3 flex flex-col items-stretch">

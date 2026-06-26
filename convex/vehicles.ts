@@ -84,6 +84,60 @@ export const update = mutation({
   },
 });
 
+export const getHistoryByVehicle = query({
+  args: {
+    orgId: v.id("organizations"),
+    vehicleId: v.id("vehicles"),
+  },
+  handler: async (ctx, args) => {
+    await requireOrgAccess(ctx, args.orgId);
+
+    const orders = await ctx.db
+      .query("work_orders")
+      .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+      .filter((q) => q.eq(q.field("vehicleId"), args.vehicleId))
+      .order("desc")
+      .collect();
+
+    const enriched = await Promise.all(
+      orders.map(async (order) => {
+        let workerName: string | null = null;
+        if (order.assignedWorkerId) {
+          const w = await ctx.db.get(order.assignedWorkerId);
+          if (w) workerName = w.name;
+        }
+
+        const itemsTotal = (order.items ?? []).reduce(
+          (sum, i) => sum + i.total,
+          0
+        );
+        const paymentsTotal = (order.payments ?? []).reduce(
+          (sum, p) => sum + p.amount,
+          0
+        );
+        const partsCount = (order.items ?? []).filter(
+          (i) => i.type === "part"
+        ).length;
+        const laborCount = (order.items ?? []).filter(
+          (i) => i.type === "labor" || i.type === "service"
+        ).length;
+
+        return {
+          ...order,
+          workerName,
+          itemsTotal,
+          paymentsTotal,
+          partsCount,
+          laborCount,
+          isPaid: paymentsTotal >= itemsTotal && itemsTotal > 0,
+        };
+      })
+    );
+
+    return enriched;
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("vehicles") },
   handler: async (ctx, args) => {
